@@ -18,7 +18,9 @@ export const bootstrap = () => {
     app.use(express.json());
 
     const port = process.env.PORT || 5000;
+
     connectDB();
+    app.get('/test', (req, res) => res.json({ ok: true }));
     app.use('/api/v1', baseRouter)
     app.use((err: IError, req: Request, res: Response, next: NextFunction): Response | void => {
         return res.status(err.statusCode || 500).json({
