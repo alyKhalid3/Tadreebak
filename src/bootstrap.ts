@@ -7,6 +7,8 @@ import { connect } from 'http2';
 import { connectDB } from './DB/db.connection';
 import { IError } from './utils/error';
 import baseRouter from './routes';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
 if (process.env.NODE_ENV !== 'production') {
     dotenv.config({ path: path.resolve('./src/config/.env') });
 }
@@ -22,6 +24,7 @@ export const bootstrap = () => {
     connectDB();
     app.get('/test', (req, res) => res.json({ ok: true }));
     app.use('/api/v1', baseRouter)
+    app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
     app.use((err: IError, req: Request, res: Response, next: NextFunction): Response | void => {
         return res.status(err.statusCode || 500).json({
             errMsg: err.message,
