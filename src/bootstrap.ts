@@ -7,13 +7,13 @@ import { connect } from 'http2';
 import { connectDB } from './DB/db.connection';
 import { IError } from './utils/error';
 import baseRouter from './routes';
-dotenv.config({
-    path: path.resolve('./src/config/.env')
-})
+if (process.env.NODE_ENV !== 'production') {
+    dotenv.config({ path: path.resolve('./src/config/.env') });
+}
 
 
 export const bootstrap = () => {
-    
+
 
     app.use(express.json());
 
