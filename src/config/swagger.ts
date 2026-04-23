@@ -10,7 +10,7 @@ const options = {
     },
     servers: [
       { url: 'http://localhost:3000/api/v1', description: 'Local' },
-      { url: 'https://tadreebak.railway.app/api/v1', description: 'Production' },
+      { url: 'https://tadreebak-production.up.railway.app/api/v1', description: 'Production' },
     ],
     components: {
       securitySchemes: {
