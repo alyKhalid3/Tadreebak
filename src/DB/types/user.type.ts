@@ -3,18 +3,22 @@ export enum UserRoleEnum {
     ADMIN = 'admin',
     USER = 'user'
 }
-export type otp={
+export type otp = {
     otp: string;
     expiresAt: Date;
 }
-export enum ProviderEnum{
-    SYSTEM='system',
-    GOOGLE='google',
-    FACEBOOK='facebook'
+export enum ProviderEnum {
+    SYSTEM = 'system',
+    GOOGLE = 'google',
+    FACEBOOK = 'facebook'
+}
+export type fileAttributtes = {
+    public_id: string;
+    secure_url: string;
 }
 export interface IUser {
     firstName: string;
-    lastName:string;
+    lastName: string;
     email: string;
     password: string;
     role: UserRoleEnum;
@@ -25,10 +29,10 @@ export interface IUser {
     phoneNumber: string;
     isConfirmed: boolean;
     isChangeCredentialsUpdated: Date;
-    profileImage: string;
-    coverImage: string[];
-    
-    provider:ProviderEnum
+    profileImage: fileAttributtes;
+    coverImage: fileAttributtes[];
+
+    provider: ProviderEnum
 
 
 }

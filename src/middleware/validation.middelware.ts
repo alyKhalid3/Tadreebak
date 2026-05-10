@@ -10,7 +10,9 @@ export const validation = (schema: z.ZodType<any>) => (req: Request, res: Respon
     const data = {
         ...req.body,
         ...req.params,
-        ...req.query
+        ...req.query,
+        files: req.files,
+        legalAttachment: req.file,
     }
     const result = schema.safeParse(data);
     if (!result.success) {

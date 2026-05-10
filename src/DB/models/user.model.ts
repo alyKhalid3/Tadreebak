@@ -1,6 +1,6 @@
 
 import mongoose, { HydratedDocument } from "mongoose";
-import { IUser, ProviderEnum, UserRoleEnum } from "../types/user.type";
+import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes } from "../types/user.type";
 import { template } from "../../utils/sendEmail/generateHtml";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { createHash } from "../../utils/hash";
@@ -28,8 +28,15 @@ const userSchema = new mongoose.Schema<IUser>({
     phoneNumber: { type: String, unique: true },
     isConfirmed: { type: Boolean, default: false },
     isChangeCredentialsUpdated: { type: Date },
-    profileImage: { type: String, default: '' },
-    coverImage: { type: [String], default: [] },
+    profileImage: {
+        type: {
+            public_id: String,
+            secure_url: String
+        }, default: { public_id: '', secure_url: '' }
+    },
+    coverImage: {
+        type: [{ public_id: String, secure_url: String }], default: []
+    },
     provider: { type: String, enum: ProviderEnum, default: ProviderEnum.SYSTEM }
 }, { timestamps: true });
 

@@ -1,0 +1,1 @@
+export { default as companyRouter, companyRoutes } from "./company.controller"

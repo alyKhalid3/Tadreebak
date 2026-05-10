@@ -42,7 +42,7 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
     if (!user.isConfirmed) {
         throw new NotConfirmedException("Please confirm your email to proceed")
     }
-    if (user.isChangeCredentialsUpdated.getTime() > payload.iat * 1000) {
+    if (user.isChangeCredentialsUpdated?.getTime() > payload.iat * 1000) {
         throw new ApplicationError("please login again", 400)
     }
     return { user, payload }
