@@ -1,7 +1,9 @@
 import { UserService } from './user.service';
 import { Router } from "express";
-import { auth } from "../../middleware/auth.middelware";
+import { auth } from "../../middleware/authentication.middelware";
 import { fileTypes, StoreIn, uploadFile } from '../../utils/multer/multer';
+import { AuthZMiddleware } from '../../middleware/authorization.middelware';
+import { UserRoleEnum } from '../../DB/types/user.type';
 
 const router = Router();
 
@@ -9,7 +11,9 @@ const router = Router();
 export const userRoutes = {
     base: '/user',
     uploadMedia: '/upload/:type',
-    update: '/:userId'
+    update: '/:userId',
+    delete: '/:userId',
+    approveCompany: '/approve-company/:companyId',
 }
 const userService = new UserService()
 /**
@@ -46,6 +50,9 @@ const userService = new UserService()
  *         description: Unauthorized
  */
 router.post(userRoutes.uploadMedia, auth(), uploadFile({ fileType: fileTypes.images, storeIn: StoreIn.DISK }).single('file'), userService.uploadMedia)
+
+
+router.patch(userRoutes.approveCompany, auth(),AuthZMiddleware([UserRoleEnum.ADMIN]), userService.approveCompany)
 
 
 

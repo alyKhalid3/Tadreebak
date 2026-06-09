@@ -1,15 +1,18 @@
+import mongoose, { isObjectIdOrHexString, ObjectId } from 'mongoose';
 import { UserRepo } from './../../DB/repos/user.repo';
 import { destroySingleFile, uploadSingleFile } from './../../utils/multer/cloudinary.service';
 import multer from 'multer'
 import { Request, Response, NextFunction } from 'express'
 import { ApplicationError } from '../../utils/error'
 import { successHandler } from '../../utils/successHandler'
-import { isObjectIdOrHexString } from 'mongoose';
+
+import { CompanyRepo } from '../../DB/repos/company.repo';
 
 
 export class UserService {
     constructor() { }
     private userRepo = new UserRepo()
+    private companyRepo = new CompanyRepo() // to avoid circular dependency between user and company repos as company repo needs user repo to update the company employees
     uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
         const { type } = req.params
         const user = res.locals.user
@@ -36,5 +39,24 @@ export class UserService {
         })
         return successHandler({ res, message: "image uploaded successfully", data: { url: secure_url, public_id: public_id } })
 
+    }
+    approveCompany = async (req: Request, res: Response, next: NextFunction) => {
+        const { companyId } = req.params
+        if (!isObjectIdOrHexString(companyId)) {
+            throw new ApplicationError("Invalid company id", 400)
+        }
+        const company = await this.companyRepo.findById({ id: companyId as string })
+        if (!company) {
+            throw new ApplicationError("Company not found", 404)
+        }
+        if (company.approvedByAdmin) {
+            throw new ApplicationError("Company is already approved", 400)
+        }
+
+        const updatedCompany = await this.companyRepo.update({
+            filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+            data: { approvedByAdmin: true }
+        })
+        return successHandler({ res, message: "Company approved successfully" })
     }
 }

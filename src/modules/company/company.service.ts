@@ -132,5 +132,5 @@ export class CompanyService {
             next(error)
         }
     }
-
+    
 }

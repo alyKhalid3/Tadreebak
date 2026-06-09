@@ -1,5 +1,5 @@
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
-import { payload } from "../middleware/auth.middelware";
+import { payload } from "../middleware/authentication.middelware";
 
 
 

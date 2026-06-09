@@ -3,7 +3,7 @@ import { Router } from "express";
 import { validation } from "../../middleware/validation.middelware";
 import { CompanyService } from "./company.service";
 import * as CompanyValidation from "./company.validation";
-import { auth } from "../../middleware/auth.middelware";
+import { auth } from "../../middleware/authentication.middelware";
 import { fileTypes, StoreIn, uploadFile } from "../../utils/multer/multer";
 import { ApplicationError } from "../../utils/error";
 const router = Router();

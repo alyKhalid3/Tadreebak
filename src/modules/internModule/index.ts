@@ -1,0 +1,1 @@
+export { default as internRouter, internRoutes } from "./intern.controller"
