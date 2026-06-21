@@ -13,6 +13,9 @@ export abstract class DBRepo<T> {
   find = async ({ filter, projection, options }:
       { filter: Filter<T>, projection?: string, options?: QueryOptions<T> }): Promise<Array<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T>>> => {
     const query = this.model.find(filter, projection, options)
+    if (options?.populate) {
+      query.populate(options.populate as any)
+    }
     if (options?.lean) {
       query.lean()
     }

@@ -14,3 +14,22 @@ export const createCompany = z.object({
         size: z.number()
     }),
 })
+
+export const updateCompany = z.object({
+    name: z.string().min(3).max(50).optional(),
+    description: z.string().optional(),
+    industry: z.string().optional(),
+    address: z.string().optional(),
+    numberOfEmployees: z.string().optional(),
+    companyEmail: z.email().optional(),
+})
+
+export const listCompanyQuerySchema = z.object({
+    name: z.string().optional(),
+    industry: z.string().optional(),
+    address: z.string().optional(),
+    companyEmail: z.string().optional(),
+    approvedByAdmin: z.string().optional(),
+    page: z.string().optional(),
+    limit: z.string().optional(),
+})

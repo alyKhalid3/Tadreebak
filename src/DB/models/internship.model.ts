@@ -11,6 +11,7 @@ export const internshipSchema = new mongoose.Schema<IInternShip>({
     location: { type: String, enum: LocationEnum, default: LocationEnum.on_site, required: true },
     workingTime: { type: String, enum: WorkingTimeEnum, default: WorkingTimeEnum.FULL_TIME, required: true },
     softSkills: { type: [String], required: true },
+    technicalSkills: { type: [String], required: true },
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     closed: { type: Boolean, default: false },

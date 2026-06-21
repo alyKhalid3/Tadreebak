@@ -1,1 +1,1 @@
-export { default as internRouter, internRoutes } from "./intern.controller"
+export { default as internRouter, internRoutes, companyRouter } from "./intern.controller"

@@ -3,7 +3,6 @@ import express from 'express';
 const app: Express = express();
 import path from 'path';
 import dotenv from 'dotenv';
-import { connect } from 'http2';
 import { connectDB } from './DB/db.connection';
 import { IError } from './utils/error';
 import baseRouter from './routes';

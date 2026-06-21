@@ -16,3 +16,6 @@ emailEmitter.subscribe('send-email-activation-code',async({to,subject,html}:{to:
 emailEmitter.subscribe('send-email-password-reset-code',async({to,subject,html}:{to:string,subject:string,html:string})=>{
     await sendEmail({to,subject,html})
 })
+emailEmitter.subscribe('send-email-new-email-code',async({to,subject,html}:{to:string,subject:string,html:string})=>{
+    await sendEmail({to,subject,html})
+})

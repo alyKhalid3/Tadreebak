@@ -19,6 +19,7 @@ export interface IInternShip {
     workingTime: string;
     description: string;
     softSkills: string[];
+    technicalSkills: string[];
     addedBy: ObjectId;
     updatedBy: ObjectId;
     closed: boolean;

@@ -7,8 +7,8 @@ import { ApplicationError } from "../../utils/error"
 import { destroySingleFile, uploadSingleFile } from "../../utils/multer/cloudinary.service"
 import { successHandler } from "../../utils/successHandler"
 import { NotFoundError } from "oblien"
+import { companyModel } from "../../DB/models/company.model"
 
-import path from "path"
 export class CompanyService {
     private companyRepo = new CompanyRepo()
     private userRepo = new UserRepo()
@@ -17,7 +17,7 @@ export class CompanyService {
             const data = req.body as HydratedDocument<ICompany>
             const user = res.locals.user
             const file = req.file as Express.Multer.File
-            
+
             const company = await this.companyRepo.findOne({
                 filter: {
                     $or: [{ name: data.name }, { companyEmail: data.companyEmail }],
@@ -64,17 +64,83 @@ export class CompanyService {
         } catch (error) {
             next(error)
         }
-            }
-    getCompanyByName = async (req: Request, res: Response, next: NextFunction) => {
-        const { name } = req.params
+    }
+    list = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { name, industry, address, companyEmail, approvedByAdmin, page = "1", limit = "10" } = req.query as Record<string, string | undefined>
 
+            const filter: Record<string, any> = { deletedAt: null, bannedAt: null }
 
-        const company = await this.companyRepo.findOne({ filter: { name: name as string }, options: { select: "-legalAttachment" } })
-        if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
-            throw new NotFoundError("Company not found")
+            if (name) filter.name = { $regex: name, $options: "i" }
+            if (industry) filter.industry = { $regex: industry, $options: "i" }
+            if (address) filter.address = { $regex: address, $options: "i" }
+            if (companyEmail) filter.companyEmail = companyEmail
+            if (approvedByAdmin === "true") filter.approvedByAdmin = true
+            if (approvedByAdmin === "false") filter.approvedByAdmin = false
+
+            const pageNum = Math.max(1, parseInt(page || "1", 10))
+            const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
+            const skip = (pageNum - 1) * limitNum
+
+            const [companies, total] = await Promise.all([
+                this.companyRepo.find({ filter, options: { skip, limit: limitNum, sort: { createdAt: -1 }, populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }] } }),
+                companyModel.countDocuments(filter),
+            ])
+
+            return successHandler({
+                res,
+                message: "Companies fetched successfully",
+                data: {
+                    companies,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        pages: Math.ceil(total / limitNum),
+                    }
+                }
+            })
+        } catch (error) {
+            next(error)
         }
+    }
+    getCompany = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
 
-        return successHandler({ res, message: "Company fetched successfully", data: { company } })
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+
+            const company = await this.companyRepo.findOne({ filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) }, options: { populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }] } })
+            if (
+                !company ||
+                company.deletedAt ||
+                company.bannedAt ||
+                !company.approvedByAdmin
+            ) {
+                throw new NotFoundError("Company not found")
+            }
+
+            return successHandler({ res, message: "Company fetched successfully", data: { company } })
+        } catch (error) {
+            next(error)
+        }
+    }
+    getCompanyByName = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { name } = req.params
+
+
+            const company = await this.companyRepo.findOne({ filter: { name: name as string }, options: { select: "-legalAttachment" } })
+            if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
+                throw new NotFoundError("Company not found")
+            }
+
+            return successHandler({ res, message: "Company fetched successfully", data: { company } })
+        } catch (error) {
+            next(error)
+        }
     }
     uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -119,7 +185,8 @@ export class CompanyService {
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: {
                     [type as string]: { public_id, secure_url }
-                }
+                },
+                options: { returnDocument: "after" },
             })
 
             return successHandler({
@@ -132,5 +199,5 @@ export class CompanyService {
             next(error)
         }
     }
-    
+
 }

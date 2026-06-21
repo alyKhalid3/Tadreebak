@@ -35,6 +35,9 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
             process.env.ACCESS_TOKEN_SECRET as string
             : process.env.REFRESH_TOKEN_SECRET as string
     )
+    if (!payload.iat || !payload.id) {
+        throw new InvalidTokenException("Invalid token payload");
+    }
     const user = await userRepo.findById({ id: payload.id })
     if (!user) {
         throw new NotFoundException("User not found");
@@ -42,7 +45,7 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
     if (!user.isConfirmed) {
         throw new NotConfirmedException("Please confirm your email to proceed")
     }
-    if (user.isChangeCredentialsUpdated?.getTime() > payload.iat * 1000) {
+    if (user.isChangeCredentialsUpdated?.getTime()! > payload.iat * 1000) {
         throw new ApplicationError("please login again", 400)
     }
     return { user, payload }

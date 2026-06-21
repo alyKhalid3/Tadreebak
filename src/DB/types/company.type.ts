@@ -17,7 +17,7 @@ export interface ICompany {
     createdBy: Types.ObjectId
     logo: fileAttributtes
     coverPicture: fileAttributtes
-    HRs: Types.ObjectId[]
+    // HRs: Types.ObjectId[]
     bannedAt: Date
     deletedAt: Date
     legalAttachment:fileAttributtes

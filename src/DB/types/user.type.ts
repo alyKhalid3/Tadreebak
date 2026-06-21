@@ -16,11 +16,25 @@ export type fileAttributtes = {
     public_id: string;
     secure_url: string;
 }
+export interface IEducation {
+    institution: string;
+    degree: string;
+    field: string;
+    startDate: Date;
+    endDate?: Date;
+}
+export interface IExperience {
+    company: string;
+    title: string;
+    description?: string;
+    startDate: Date;
+    endDate?: Date;
+}
 export interface IUser {
     firstName: string;
     lastName: string;
     email: string;
-    password: string;
+    password?: string;
     role: UserRoleEnum;
     newEmail?: string;
     emailOtp: otp;
@@ -28,11 +42,18 @@ export interface IUser {
     newEmailOtp: otp;
     phoneNumber: string;
     isConfirmed: boolean;
-    isChangeCredentialsUpdated: Date;
-    profileImage: fileAttributtes;
-    coverImage: fileAttributtes[];
+    isChangeCredentialsUpdated?: Date;
+    profilePicture: fileAttributtes;
+    coverPicture: fileAttributtes;
+    provider: ProviderEnum;
 
-    provider: ProviderEnum
-
-
+    bio?: string;
+    headline?: string;
+    skills?: string[];
+    education?: IEducation[];
+    experience?: IExperience[];
+    resume?: fileAttributtes;
+    dateOfBirth?: Date;
+    gender?: 'male' | 'female';
+    address?: string;
 }

@@ -7,6 +7,7 @@ import { ApplicationError } from '../../utils/error'
 import { successHandler } from '../../utils/successHandler'
 
 import { CompanyRepo } from '../../DB/repos/company.repo';
+import { NotFoundException } from '../../utils/error';
 
 
 export class UserService {
@@ -58,5 +59,59 @@ export class UserService {
             data: { approvedByAdmin: true }
         })
         return successHandler({ res, message: "Company approved successfully" })
+    }
+    getProfile = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { userId } = req.params
+            if (!isObjectIdOrHexString(userId)) {
+                throw new ApplicationError('Invalid user id', 400)
+            }
+            const user = await this.userRepo.findById({ id: userId as string })
+            if (!user) {
+                throw new NotFoundException('User not found')
+            }
+            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, resume, dateOfBirth, gender, address }) =>
+                ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, resume, dateOfBirth, gender, address }))(user.toObject())
+            return successHandler({ res, data: { user: safeUser } })
+        } catch (error) {
+            next(error)
+        }
+    }
+    updateProfile = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { userId } = req.params
+            const user = res.locals.user
+            if (user._id.toString() !== userId) {
+                throw new ApplicationError('You can only update your own profile', 403)
+            }
+            const { phone, ...updates } = req.body
+            const data: any = { ...updates }
+            if (phone) {
+                data.phoneNumber = phone
+            }
+            const updatedUser = await this.userRepo.update({
+                filter: { id: userId as string },
+                data
+            })
+            if (!updatedUser) {
+                throw new NotFoundException('User not found')
+            }
+            return successHandler({ res, message: 'Profile updated successfully', data: { user: updatedUser } })
+        } catch (error) {
+            next(error)
+        }
+    }
+    deleteAccount = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { userId } = req.params
+            const user = res.locals.user
+            if (user._id.toString() !== userId) {
+                throw new ApplicationError('You can only delete your own account', 403)
+            }
+            await this.userRepo.deleteMany({ filter: { id: userId as string } })
+            return successHandler({ res, message: 'Account deleted successfully' })
+        } catch (error) {
+            next(error)
+        }
     }
 }
