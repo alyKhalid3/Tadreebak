@@ -90,7 +90,7 @@ export class UserService {
                 data.phoneNumber = phone
             }
             const updatedUser = await this.userRepo.update({
-                filter: { id: userId as string },
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(userId as string) },
                 data
             })
             if (!updatedUser) {
@@ -108,7 +108,7 @@ export class UserService {
             if (user._id.toString() !== userId) {
                 throw new ApplicationError('You can only delete your own account', 403)
             }
-            await this.userRepo.deleteMany({ filter: { id: userId as string } })
+            await this.userRepo.deleteMany({ filter: { _id: mongoose.Types.ObjectId.createFromHexString(userId as string) } })
             return successHandler({ res, message: 'Account deleted successfully' })
         } catch (error) {
             next(error)

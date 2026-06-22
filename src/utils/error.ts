@@ -1,9 +1,7 @@
 
-import { Options } from './../../node_modules/raw-body/index.d';
-
 export class ApplicationError extends Error {
     statusCode: number;
-    constructor(message: string, statusCode: number,Options?:Options) {
+    constructor(message: string, statusCode: number) {
         super(message);
         this.statusCode = statusCode;
         Object.setPrototypeOf(this, ApplicationError.prototype);
@@ -22,8 +20,8 @@ export class ValidationError extends ApplicationError {
 }
 
 export class InvalidTokenException extends ApplicationError{
-    constructor(message:string){
-        super(message,409)
+    constructor(message:string='invalid token'){
+        super(message,401)
     }
 }
 export class EmailIsExistException extends ApplicationError{
@@ -43,7 +41,7 @@ export class ExpiredOTPException extends ApplicationError{
 }
 export class InvalidCredentialsException extends ApplicationError{
     constructor(message:string='invalid credentials'){
-        super(message,409)
+        super(message,401)
     }
 }
 export class NotConfirmedException extends ApplicationError{
@@ -58,6 +56,6 @@ export class FileUploadException extends ApplicationError{
 }
 export class BadRequestException extends ApplicationError{
     constructor(message:string){
-        super(message,500)
+        super(message,400)
     }
 }

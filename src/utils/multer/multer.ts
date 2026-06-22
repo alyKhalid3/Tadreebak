@@ -15,6 +15,9 @@ export const fileTypes = {
     pdf: ['application/pdf']
 }
 
+// Max file size enforced by multer while the stream is being received.
+// file.size is not known inside fileFilter, so the limit must live here.
+const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2 MB
 
 
 export const uploadFile = ({
@@ -29,20 +32,12 @@ export const uploadFile = ({
 
 
     const fileFilter = (req: Request, file: Express.Multer.File, callback: CallableFunction): void => {
-        
-        if (file.size > 2000000 && storeIn === StoreIn.MEMORY) {
-            return callback(new ApplicationError('File size is too large use disk not memory', 500), false)
-        }
-        else if (!fileType.includes(file.mimetype)) {
+        if (!fileType.includes(file.mimetype)) {
             return callback(new ApplicationError('File type is not allowed', 400), false)
         }
         callback(null, true)
     }
 
 
-
-
-
-
-    return multer({ storage, fileFilter })
+    return multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } })
 }

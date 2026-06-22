@@ -1,6 +1,5 @@
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { IInternShip, LocationEnum, WorkingTimeEnum } from "../types/internship.type";
-
 
 
 
@@ -15,7 +14,8 @@ export const internshipSchema = new mongoose.Schema<IInternShip>({
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     closed: { type: Boolean, default: false },
-    companyId: { type: String, required: true, ref: 'Company' }
+    // ObjectId (not String) so populate("companyId") resolves the Company ref
+    companyId: { type: Types.ObjectId, required: true, ref: 'Company' }
 }, { timestamps: true });
 
-export const InternShipModel = mongoose.model('InternShip', internshipSchema);
+export const InternShipModel = mongoose.model<IInternShip>('InternShip', internshipSchema);

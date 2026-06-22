@@ -62,7 +62,7 @@ export class AuthService {
             if (user.isConfirmed) {
                 throw new ApplicationError("Email is already confirmed", 400)
             }
-            if (user.emailOtp.expiresAt.getTime() < Date.now()) {
+            if (!user.emailOtp?.expiresAt || user.emailOtp.expiresAt.getTime() < Date.now()) {
                 throw new ExpiredOTPException("OTP has expired")
             }
             const isMatch = await compareHash({ text: otp, hashed: user.emailOtp.otp })
@@ -194,7 +194,7 @@ export class AuthService {
             if (!user) {
                 throw new NotFoundException("User not found")
             }
-            if (user.passwordOtp.expiresAt.getTime() < Date.now()) {
+            if (!user.passwordOtp?.expiresAt || user.passwordOtp.expiresAt.getTime() < Date.now()) {
                 throw new ExpiredOTPException("OTP has expired")
             }
             const isMatch = await compareHash({ text: otp, hashed: user.passwordOtp.otp })
@@ -299,7 +299,7 @@ export class AuthService {
             if (!user.newEmail) {
                 throw new ApplicationError('No email change requested', 400)
             }
-            if (user.newEmailOtp.expiresAt.getTime() < Date.now()) {
+            if (!user.newEmailOtp?.expiresAt || user.newEmailOtp.expiresAt.getTime() < Date.now()) {
                 throw new ExpiredOTPException('OTP has expired')
             }
             const isMatch = await compareHash({ text: otp, hashed: user.newEmailOtp.otp })

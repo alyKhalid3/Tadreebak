@@ -90,7 +90,7 @@ const router = Router()
  *                 msg:
  *                   type: string
  */
-router.get(internRoutes.list, internService.list)
+router.get(internRoutes.list, validation(InternValidation.listInternQuerySchema), internService.list)
 /**
  * @swagger
  * /internships/{internId}:

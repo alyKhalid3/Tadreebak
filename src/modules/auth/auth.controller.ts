@@ -3,6 +3,7 @@ import { Router } from "express"
 import { AuthService } from "./auth.service"
 import { validation } from "../../middleware/validation.middleware"
 import { auth } from "../../middleware/authentication.middleware"
+import { authLimiter } from "../../middleware/rateLimiter"
 import * as AuthValidation from "./auth.validation"
 
 
@@ -22,6 +23,7 @@ export const authRoutes = {
     resendEmailOtp: '/resend-otp'
 }
 const router = Router()
+router.use(authLimiter)
 const authService = new AuthService()
 
 

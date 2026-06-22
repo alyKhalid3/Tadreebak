@@ -7,7 +7,7 @@ import { InternShipModel } from "../models/internship.model";
 
 
 
-export class internRepo extends DBRepo<IInternShip> {
+export class InternRepo extends DBRepo<IInternShip> {
 
 
     constructor(protected override readonly model: Model<IInternShip> = InternShipModel) {

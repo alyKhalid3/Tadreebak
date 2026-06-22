@@ -1,7 +1,8 @@
 import { HydratedDocument, Model, QueryOptions, FlattenMaps, ObjectId, UpdateQuery, MongooseBaseQueryOptionKeys, MongooseBaseQueryOptions, UpdateWriteOpResult, Document } from "mongoose";
-import { IUser } from "./types/user.type";
 import { DeleteOptions, UpdateOptions } from "mongodb";
-import { Filter } from "mongodb/src";
+
+
+type FilterQuery<T> = Record<string, any>;
 
 export abstract class DBRepo<T> {
   constructor(protected readonly model: Model<T>) { }
@@ -11,7 +12,7 @@ export abstract class DBRepo<T> {
     return doc
   }
   find = async ({ filter, projection, options }:
-      { filter: Filter<T>, projection?: string, options?: QueryOptions<T> }): Promise<Array<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T>>> => {
+      { filter: FilterQuery<T>, projection?: string, options?: QueryOptions<T> }): Promise<Array<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T>>> => {
     const query = this.model.find(filter, projection, options)
     if (options?.populate) {
       query.populate(options.populate as any)
@@ -23,7 +24,7 @@ export abstract class DBRepo<T> {
     return doc
   }
   findOne = async ({ filter, projection, options }:
-      { filter: Filter<T>, projection?: string, options?: QueryOptions<T> }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | null> => {
+      { filter: FilterQuery<T>, projection?: string, options?: QueryOptions<T> }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | null> => {
     let query = this.model.findOne(filter, projection, options)
     if (options?.populate) {
      query.populate(options.populate as any)
@@ -34,7 +35,7 @@ export abstract class DBRepo<T> {
     const doc = await query.exec()
     return doc
   }
-  update = async ({ filter,data, options }: { filter: Filter<T>; data: UpdateQuery<T>; options?: QueryOptions<T>; }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | null> => {
+  update = async ({ filter,data, options }: { filter: FilterQuery<T>; data: UpdateQuery<T>; options?: QueryOptions<T>; }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | null> => {
     const query = this.model.findOneAndUpdate(filter, data, options)
     if (options?.lean) {
       query.lean()
@@ -42,7 +43,7 @@ export abstract class DBRepo<T> {
     const doc = await query.exec()
     return doc
   }
-    updateMany = async ({ filter,data, options }: { filter: Filter<T>; data: UpdateQuery<T>; options?:UpdateOptions & MongooseBaseQueryOptions<T>; }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | UpdateWriteOpResult|null> => {
+    updateMany = async ({ filter,data, options }: { filter: FilterQuery<T>; data: UpdateQuery<T>; options?:UpdateOptions & MongooseBaseQueryOptions<T>; }): Promise<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T> | UpdateWriteOpResult|null> => {
     const query = this.model.updateMany(filter, data,options)
     const doc = await query.exec()
     return doc
@@ -57,7 +58,7 @@ export abstract class DBRepo<T> {
     return doc
   }
   deleteMany = async ({ filter,options }:
-      { filter: Filter<T>, options?:(DeleteOptions & MongooseBaseQueryOptions<T>) | null }): Promise<any> => {
+      { filter: FilterQuery<T>, options?:(DeleteOptions & MongooseBaseQueryOptions<T>) | null }): Promise<any> => {
     const query = this.model.deleteMany(filter,options)
     const doc = await query.exec()
     return doc

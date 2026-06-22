@@ -8,6 +8,9 @@ import { IError } from './utils/error';
 import baseRouter from './routes';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
+import helmet from 'helmet';
+import cors from 'cors';
+import { globalLimiter } from './middleware/rateLimiter';
 if (process.env.NODE_ENV !== 'production') {
     dotenv.config({ path: path.resolve('./src/config/.env') });
 }
@@ -17,19 +20,32 @@ export const bootstrap = () => {
 
 
     app.use(express.json());
-
-    const port = process.env.PORT || 5000;
+    app.use(helmet());
+    app.use(globalLimiter)
+    app.use(cors());
+    const port = process.env.PORT || 3000;
 
     connectDB();
     app.get('/test', (req, res) => res.json({ ok: true }));
     app.use('/api/v1', baseRouter)
     app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+    // 404 for unmatched routes
+    app.use((req: Request, res: Response) => {
+        return res.status(404).json({ errMsg: 'Route not found', cause: 404 })
+    });
+
+    // Centralized error handler — never leak the stack in production
     app.use((err: IError, req: Request, res: Response, next: NextFunction): Response | void => {
-        return res.status(err.statusCode || 500).json({
+        const statusCode = err.statusCode || 500;
+        const body: Record<string, unknown> = {
             errMsg: err.message,
-            cause: err.statusCode || 500,
-            stack: err.stack
-        })
+            cause: statusCode,
+        }
+        if (process.env.NODE_ENV !== 'production') {
+            body.stack = err.stack;
+        }
+        return res.status(statusCode).json(body)
     });
 
     app.listen(port, () => {

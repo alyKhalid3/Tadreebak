@@ -25,7 +25,8 @@ const userSchema = new mongoose.Schema<IUser>({
         otp: { type: String },
         expiresAt: { type: Date }
     },
-    phoneNumber: { type: String, unique: true },
+    // sparse so Google/OAuth users (no phone) don't collide on a null value
+    phoneNumber: { type: String, unique: true, sparse: true },
     isConfirmed: { type: Boolean, default: false },
     isChangeCredentialsUpdated: { type: Date },
     profilePicture: {
@@ -63,17 +64,13 @@ const userSchema = new mongoose.Schema<IUser>({
     address: { type: String }
 }, { timestamps: true });
 
-userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }, next) {
+userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }) {
     this.firstCreation = this.isNew
     this.plainTextOtp = this.emailOtp?.otp as string
     if (this.isModified('password'))
         this.password = await createHash({ text: this.password as string })
     if (this.isModified('emailOtp'))
         this.emailOtp.otp = await createHash({ text: this.emailOtp.otp })
-
-
-
-
 })
 userSchema.post('save', function (doc, next) {
 

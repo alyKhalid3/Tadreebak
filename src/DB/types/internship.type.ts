@@ -1,4 +1,4 @@
-import { ObjectId } from "mongoose";
+import { Types } from "mongoose";
 
 
 
@@ -20,8 +20,8 @@ export interface IInternShip {
     description: string;
     softSkills: string[];
     technicalSkills: string[];
-    addedBy: ObjectId;
-    updatedBy: ObjectId;
+    addedBy: Types.ObjectId;
+    updatedBy: Types.ObjectId;
     closed: boolean;
-    companyId: string;
+    companyId: Types.ObjectId;
 }

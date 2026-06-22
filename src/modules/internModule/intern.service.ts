@@ -1,32 +1,39 @@
 import { NextFunction, Request, Response } from "express";
-import { internRepo } from "../../DB/repos/intern.repo";
+import { InternRepo } from "../../DB/repos/intern.repo";
 import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import { CompanyRepo } from "../../DB/repos/company.repo";
 import mongoose, { isObjectIdOrHexString } from "mongoose";
 import { IInternShip } from "../../DB/types/internship.type";
 import { InternShipModel } from "../../DB/models/internship.model";
+import { ICompany } from "../../DB/types/company.type";
 
 export class InternService {
-    private internRepo = new internRepo
+    private internRepo = new InternRepo
     private companyRepo = new CompanyRepo
+
+    // Shared check: an internship may only be mutated if the owning company is
+    // active, approved, and belongs to the acting user.
+    private async authorizeCompany(companyId: string, userId: string): Promise<ICompany> {
+        if (!isObjectIdOrHexString(companyId)) {
+            throw new ApplicationError("Invalid company id", 400)
+        }
+        const company = await this.companyRepo.findById({ id: companyId })
+        if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
+            throw new NotFoundException("Company not found")
+        }
+        if (company.createdBy.toString() !== userId) {
+            throw new ApplicationError("You are not the owner of this company", 403)
+        }
+        return company
+    }
 
     create = async (req: Request, res: Response, next: NextFunction) => {
         const companyId = req.params.companyId as string
         const { title, description, location, workingTime, softSkills, technicalSkills } = req.body as Record<string, any>
         const user = res.locals.user
 
-        if (!isObjectIdOrHexString(companyId)) {
-            throw new ApplicationError("Invalid company id", 400)
-        }
-
-        const company = await this.companyRepo.findById({ id: companyId })
-        if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
-            throw new NotFoundException("Company not found")
-        }
-        if (company.createdBy.toString() !== user._id.toString()) {
-            throw new ApplicationError("You are not the owner of this company", 403)
-        }
+        await this.authorizeCompany(companyId, user._id.toString())
 
         const internship = await this.internRepo.create({
             data: {
@@ -36,7 +43,7 @@ export class InternService {
                 workingTime,
                 softSkills: softSkills as string[],
                 technicalSkills: technicalSkills as string[],
-                companyId,
+                companyId: new mongoose.Types.ObjectId(companyId),
                 addedBy: user._id,
                 updatedBy: user._id,
             }
@@ -59,10 +66,7 @@ export class InternService {
             throw new NotFoundException("Internship not found")
         }
 
-        const company = await this.companyRepo.findById({ id: internship.companyId })
-        if (!company || company.createdBy.toString() !== user._id.toString()) {
-            throw new ApplicationError("You are not the owner of this internship's company", 403)
-        }
+        await this.authorizeCompany(internship.companyId.toString(), user._id.toString())
 
         const updated = await this.internRepo.update({
             filter: { _id: mongoose.Types.ObjectId.createFromHexString(internId) },
@@ -86,10 +90,7 @@ export class InternService {
             throw new NotFoundException("Internship not found")
         }
 
-        const company = await this.companyRepo.findById({ id: internship.companyId })
-        if (!company || company.createdBy.toString() !== user._id.toString()) {
-            throw new ApplicationError("You are not the owner of this internship's company", 403)
-        }
+        await this.authorizeCompany(internship.companyId.toString(), user._id.toString())
 
         await this.internRepo.deleteMany({ filter: { _id: mongoose.Types.ObjectId.createFromHexString(internId) } })
 

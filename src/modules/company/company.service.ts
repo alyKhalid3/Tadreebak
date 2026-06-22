@@ -3,10 +3,9 @@ import { CompanyRepo } from "../../DB/repos/company.repo"
 import { UserRepo } from "../../DB/repos/user.repo"
 import mongoose, { HydratedDocument, isObjectIdOrHexString, Mongoose } from "mongoose"
 import { ICompany } from "../../DB/types/company.type"
-import { ApplicationError } from "../../utils/error"
+import { ApplicationError, NotFoundException } from "../../utils/error"
 import { destroySingleFile, uploadSingleFile } from "../../utils/multer/cloudinary.service"
 import { successHandler } from "../../utils/successHandler"
-import { NotFoundError } from "oblien"
 import { companyModel } from "../../DB/models/company.model"
 
 export class CompanyService {
@@ -51,7 +50,7 @@ export class CompanyService {
                 !company.approvedByAdmin ||
                 company.createdBy.toString() !== user._id.toString()
             ) {
-                throw new NotFoundError("Company not found")
+                throw new NotFoundException("Company not found")
             }
             const updatedCompany = await this.companyRepo.update({
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
@@ -119,7 +118,7 @@ export class CompanyService {
                 company.bannedAt ||
                 !company.approvedByAdmin
             ) {
-                throw new NotFoundError("Company not found")
+                throw new NotFoundException("Company not found")
             }
 
             return successHandler({ res, message: "Company fetched successfully", data: { company } })
@@ -134,7 +133,7 @@ export class CompanyService {
 
             const company = await this.companyRepo.findOne({ filter: { name: name as string }, options: { select: "-legalAttachment" } })
             if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
-                throw new NotFoundError("Company not found")
+                throw new NotFoundException("Company not found")
             }
 
             return successHandler({ res, message: "Company fetched successfully", data: { company } })
@@ -164,7 +163,7 @@ export class CompanyService {
                 company.bannedAt ||
                 !company.approvedByAdmin
             ) {
-                throw new NotFoundError("Company not found")
+                throw new NotFoundException("Company not found")
             }
 
             if (company.createdBy.toString() !== user._id.toString()) {
