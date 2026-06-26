@@ -1,4 +1,11 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const projectRoot = path.resolve(__dirname, '..', '..');
 
 const options = {
   definition: {
@@ -118,15 +125,16 @@ const options = {
       },
     },
   },
-  // Support both local (ts) and production (compiled js) runtimes
+  // Support both local (ts) and production (compiled js) runtimes.
+  // Use absolute paths so swagger-jsdoc doesn't depend on process working directory.
   apis: [
-    './src/modules/**/*.ts',
-    './src/routes.ts',
-
-    './dist/modules/**/*.js',
-    './dist/routes.js',
+    path.join(projectRoot, 'src/modules/**/*.ts'),
+    path.join(projectRoot, 'src/routes.ts'),
+    path.join(projectRoot, 'dist/modules/**/*.js'),
+    path.join(projectRoot, 'dist/routes.js'),
   ],
 };
+
 export const swaggerSpec = swaggerJsdoc(options);
 
 
