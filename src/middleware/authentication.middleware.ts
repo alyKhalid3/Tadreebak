@@ -3,7 +3,7 @@ import { UserModel } from "../DB/models/user.model";
 import { UserRepo } from "../DB/repos/user.repo";
 import { ApplicationError, InvalidTokenException, NotConfirmedException, NotFoundException } from "../utils/error";
 import { verifyJwt } from "../utils/jwt";
-import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
+import jsonwebtoken from "jsonwebtoken";
 
 export enum tokenTypeEnum {
     ACCESS = 'access',
@@ -43,11 +43,13 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
                 : process.env.REFRESH_TOKEN_SECRET as string
         )
     } catch (err) {
-        // Normalize jsonwebtoken errors (no statusCode) into InvalidTokenException
-        if (err instanceof TokenExpiredError) {
+        // Normalize jsonwebtoken errors (no statusCode) into InvalidTokenException.
+        // Read the classes off the default export — jsonwebtoken is CJS, so named
+        // value imports (JsonWebTokenError, TokenExpiredError) don't work under ESM.
+        if (err instanceof jsonwebtoken.TokenExpiredError) {
             throw new InvalidTokenException("Token expired")
         }
-        if (err instanceof JsonWebTokenError) {
+        if (err instanceof jsonwebtoken.JsonWebTokenError) {
             throw new InvalidTokenException("Invalid token")
         }
         throw new InvalidTokenException("Invalid token")
