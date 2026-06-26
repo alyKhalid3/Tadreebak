@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema<IUser>({
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String },
-    role: { type: String, enum: UserRoleEnum, default: UserRoleEnum.USER },
+    role: { type: String, enum: UserRoleEnum, default: UserRoleEnum.STUDENT },
     newEmail: { type: String, unique: true, sparse: true },
     emailOtp: {
         otp: { type: String },

@@ -33,3 +33,8 @@ export const listCompanyQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
 })
+
+export const listPendingCompaniesQuerySchema = z.object({
+    page: z.string().optional(),
+    limit: z.string().optional(),
+})

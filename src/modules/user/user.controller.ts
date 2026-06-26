@@ -6,6 +6,8 @@ import { AuthZMiddleware } from '../../middleware/authorization.middleware';
 import { UserRoleEnum } from '../../DB/types/user.type';
 import { validation } from '../../middleware/validation.middleware';
 import { updateProfileSchema } from './user.validation';
+import { ApplicationService } from '../applicationModule/application.service';
+import * as ApplicationValidation from '../applicationModule/application.validation';
 
 const router = Router();
 
@@ -13,12 +15,15 @@ const router = Router();
 export const userRoutes = {
     base: '/user',
     uploadMedia: '/upload/:type',
+    uploadResume: '/upload/resume',
+    myApplications: '/:userId/applications',
     getProfile: '/:userId',
     update: '/:userId',
     delete: '/:userId',
     approveCompany: '/approve-company/:companyId',
 }
 const userService = new UserService()
+const applicationService = new ApplicationService()
 /**
  * @swagger
  * /user/{userId}:
@@ -140,6 +145,71 @@ router.patch(userRoutes.update, auth(), validation(updateProfileSchema), userSer
  *         description: Unauthorized
  */
 router.post(userRoutes.uploadMedia, auth(), uploadFile({ fileType: fileTypes.images, storeIn: StoreIn.DISK }).single('file'), userService.uploadMedia)
+
+/**
+ * @swagger
+ * /user/upload/resume:
+ *   post:
+ *     summary: Upload or replace the user's resume (PDF)
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Resume uploaded successfully
+ *       400:
+ *         description: Resume file is required
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(userRoutes.uploadResume, auth(), uploadFile({ fileType: fileTypes.pdf, storeIn: StoreIn.DISK }).single('file'), userService.uploadResume)
+
+/**
+ * @swagger
+ * /user/{userId}/applications:
+ *   get:
+ *     summary: List the authenticated user's own applications
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, accepted, rejected]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: string
+ *           default: "1"
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: string
+ *           default: "10"
+ *     responses:
+ *       200:
+ *         description: Applications fetched successfully
+ *       403:
+ *         description: You can only view your own applications
+ */
+router.get(userRoutes.myApplications, auth(), validation(ApplicationValidation.listMyApplicationsQuerySchema), applicationService.listMine)
 
 /**
  * @swagger

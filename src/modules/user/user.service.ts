@@ -15,50 +15,78 @@ export class UserService {
     private userRepo = new UserRepo()
     private companyRepo = new CompanyRepo() // to avoid circular dependency between user and company repos as company repo needs user repo to update the company employees
     uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
-        const { type } = req.params
-        const user = res.locals.user
-        const file = req.file as Express.Multer.File
-        if (type !== 'profilePicture' && type !== 'coverPicture') {
-            throw new ApplicationError('params type must be profilePicture or coverPicture', 400)
-        }
-        if (!file) {
-            throw new ApplicationError("File is required", 400)
-        }
-        const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/companies/${type}` })
-        const old = user[type]
-        if (old?.public_id) {
-            await destroySingleFile(old.public_id)
-        }
-        const updatedUser = await this.userRepo.update({
-            filter: { _id: user._id },
-            data: {
-                [type as string]: {
-                    public_id,
-                    secure_url
-                }
+        try {
+            const { type } = req.params
+            const user = res.locals.user
+            const file = req.file as Express.Multer.File
+            if (type !== 'profilePicture' && type !== 'coverPicture') {
+                throw new ApplicationError('params type must be profilePicture or coverPicture', 400)
             }
-        })
-        return successHandler({ res, message: "image uploaded successfully", data: { url: secure_url, public_id: public_id } })
-
+            if (!file) {
+                throw new ApplicationError("File is required", 400)
+            }
+            const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/companies/${type}` })
+            const old = user[type]
+            if (old?.public_id) {
+                await destroySingleFile(old.public_id)
+            }
+            const updatedUser = await this.userRepo.update({
+                filter: { _id: user._id },
+                data: {
+                    [type as string]: {
+                        public_id,
+                        secure_url
+                    }
+                }
+            })
+            return successHandler({ res, message: "image uploaded successfully", data: { url: secure_url, public_id: public_id } })
+        } catch (error) {
+            next(error)
+        }
+    }
+    uploadResume = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const file = req.file as Express.Multer.File
+            if (!file) {
+                throw new ApplicationError("Resume file is required", 400)
+            }
+            const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/resume` })
+            // Destroy the previous resume (if any) to avoid orphaned Cloudinary assets.
+            if (user.resume?.public_id) {
+                await destroySingleFile(user.resume.public_id)
+            }
+            await this.userRepo.update({
+                filter: { _id: user._id },
+                data: { resume: { public_id, secure_url } }
+            })
+            return successHandler({ res, message: "Resume uploaded successfully", data: { url: secure_url, public_id } })
+        } catch (error) {
+            next(error)
+        }
     }
     approveCompany = async (req: Request, res: Response, next: NextFunction) => {
-        const { companyId } = req.params
-        if (!isObjectIdOrHexString(companyId)) {
-            throw new ApplicationError("Invalid company id", 400)
-        }
-        const company = await this.companyRepo.findById({ id: companyId as string })
-        if (!company) {
-            throw new ApplicationError("Company not found", 404)
-        }
-        if (company.approvedByAdmin) {
-            throw new ApplicationError("Company is already approved", 400)
-        }
+        try {
+            const { companyId } = req.params
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+            const company = await this.companyRepo.findById({ id: companyId as string })
+            if (!company) {
+                throw new ApplicationError("Company not found", 404)
+            }
+            if (company.approvedByAdmin) {
+                throw new ApplicationError("Company is already approved", 400)
+            }
 
-        const updatedCompany = await this.companyRepo.update({
-            filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
-            data: { approvedByAdmin: true }
-        })
-        return successHandler({ res, message: "Company approved successfully" })
+            const updatedCompany = await this.companyRepo.update({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                data: { approvedByAdmin: true }
+            })
+            return successHandler({ res, message: "Company approved successfully" })
+        } catch (error) {
+            next(error)
+        }
     }
     getProfile = async (req: Request, res: Response, next: NextFunction) => {
         try {

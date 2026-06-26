@@ -7,6 +7,7 @@ import { ApplicationError, NotFoundException } from "../../utils/error"
 import { destroySingleFile, uploadSingleFile } from "../../utils/multer/cloudinary.service"
 import { successHandler } from "../../utils/successHandler"
 import { companyModel } from "../../DB/models/company.model"
+import { UserRoleEnum } from "../../DB/types/user.type"
 
 export class CompanyService {
     private companyRepo = new CompanyRepo()
@@ -17,6 +18,12 @@ export class CompanyService {
             const user = res.locals.user
             const file = req.file as Express.Multer.File
 
+            // Bug 8: if multer rejected the upload (wrong type / too large) or no
+            // file was sent, req.file is undefined. Guard before touching file.path.
+            if (!file) {
+                throw new ApplicationError('Legal attachment PDF is required', 400)
+            }
+
             const company = await this.companyRepo.findOne({
                 filter: {
                     $or: [{ name: data.name }, { companyEmail: data.companyEmail }],
@@ -26,6 +33,17 @@ export class CompanyService {
                 throw new ApplicationError('company name or email already exists', 400)
             const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/companies` });
             const createdCompany = await this.companyRepo.create({ data: { ...data, createdBy: user._id, legalAttachment: { public_id, secure_url } } })
+
+            // Promote the creator to COMPANY_OWNER. Role is granted at creation
+            // time (per product decision); they still can't post internships
+            // until an admin approves the company.
+            if (user.role !== UserRoleEnum.COMPANY_OWNER) {
+                await this.userRepo.update({
+                    filter: { _id: user._id },
+                    data: { role: UserRoleEnum.COMPANY_OWNER }
+                })
+            }
+
             return successHandler({ res, message: "Company created successfully", data: { company: createdCompany } })
 
         } catch (error) {
@@ -194,6 +212,100 @@ export class CompanyService {
                 data: { company: updatedCompany }
             })
 
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Admin: list companies pending approval ----
+    listPending = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { page = "1", limit = "10" } = req.query as Record<string, string | undefined>
+
+            const filter: Record<string, any> = { approvedByAdmin: false, deletedAt: null, bannedAt: null }
+
+            const pageNum = Math.max(1, parseInt(page || "1", 10))
+            const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
+            const skip = (pageNum - 1) * limitNum
+
+            const [companies, total] = await Promise.all([
+                this.companyRepo.find({
+                    filter,
+                    options: {
+                        skip,
+                        limit: limitNum,
+                        sort: { createdAt: -1 },
+                        populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                    },
+                }),
+                companyModel.countDocuments(filter),
+            ])
+
+            return successHandler({
+                res,
+                message: "Pending companies fetched successfully",
+                data: {
+                    companies,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        pages: Math.ceil(total / limitNum),
+                    },
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Admin: ban a company ----
+    banCompany = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+            const company = await this.companyRepo.findOne({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+            })
+            if (!company || company.deletedAt) {
+                throw new NotFoundException("Company not found")
+            }
+            if (company.bannedAt) {
+                throw new ApplicationError("Company is already banned", 400)
+            }
+            await this.companyRepo.update({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                data: { bannedAt: new Date() },
+            })
+            return successHandler({ res, message: "Company banned successfully" })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Admin: unban a company ----
+    unbanCompany = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+            const company = await this.companyRepo.findOne({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+            })
+            if (!company || company.deletedAt) {
+                throw new NotFoundException("Company not found")
+            }
+            if (!company.bannedAt) {
+                throw new ApplicationError("Company is not banned", 400)
+            }
+            await this.companyRepo.update({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                data: { bannedAt: null },
+            })
+            return successHandler({ res, message: "Company unbanned successfully" })
         } catch (error) {
             next(error)
         }

@@ -3,6 +3,7 @@ import { InternService } from "./intern.service";
 import { validation } from "../../middleware/validation.middleware";
 import * as InternValidation from "./intern.validation";
 import { auth } from "../../middleware/authentication.middleware";
+import { applicationRouter } from "../applicationModule";
 
 export const internRoutes = {
     base: '/internships',
@@ -313,6 +314,10 @@ companyRouter.put('/:internId', auth(), validation(InternValidation.updateIntern
  *         description: Internship not found
  */
 companyRouter.delete('/:internId', auth(), internService.delete)
+
+// Internship applications — inherits :companyId and :internId via mergeParams.
+// Exposes POST/GET on /:internId/applications and PATCH/DELETE on /:internId/applications/:applicationId.
+companyRouter.use('/:internId/applications', applicationRouter)
 
 export { companyRouter }
 export default router

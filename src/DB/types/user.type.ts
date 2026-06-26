@@ -1,7 +1,9 @@
 
 export enum UserRoleEnum {
     ADMIN = 'admin',
-    USER = 'user'
+    USER = 'user',
+    STUDENT = 'student',
+    COMPANY_OWNER = 'company_owner',
 }
 export type otp = {
     otp: string;

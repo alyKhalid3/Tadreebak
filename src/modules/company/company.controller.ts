@@ -4,6 +4,8 @@ import { validation } from "../../middleware/validation.middleware";
 import { CompanyService } from "./company.service";
 import * as CompanyValidation from "./company.validation";
 import { auth } from "../../middleware/authentication.middleware";
+import { AuthZMiddleware } from "../../middleware/authorization.middleware";
+import { UserRoleEnum } from "../../DB/types/user.type";
 import { fileTypes, StoreIn, uploadFile } from "../../utils/multer/multer";
 const router = Router();
 
@@ -16,7 +18,10 @@ export const companyRoutes = {
     updateCompany: '/:companyId',
     getCompanyByName: '/name/:name',
     uploadLogo: '/:companyId/logo',
-    uploadCover: '/:companyId/coverPicture'
+    uploadCover: '/:companyId/coverPicture',
+    adminPending: '/admin/pending',
+    adminBan: '/admin/:companyId/ban',
+    adminUnban: '/admin/:companyId/unban',
 
 }
 const companyService = new CompanyService()
@@ -322,7 +327,100 @@ router.post(
     companyService.uploadMedia
 )
 
+/**
+ * @swagger
+ * /company/admin/pending:
+ *   get:
+ *     summary: List companies pending admin approval
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: string
+ *           default: "1"
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: string
+ *           default: "10"
+ *     responses:
+ *       200:
+ *         description: Pending companies fetched successfully
+ *       403:
+ *         description: Admin role required
+ */
+router.get(
+    companyRoutes.adminPending,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.ADMIN]),
+    validation(CompanyValidation.listPendingCompaniesQuerySchema),
+    companyService.listPending
+)
 
+/**
+ * @swagger
+ * /company/admin/{companyId}/ban:
+ *   patch:
+ *     summary: Ban a company (admin only)
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Company banned successfully
+ *       400:
+ *         description: Company is already banned
+ *       403:
+ *         description: Admin role required
+ *       404:
+ *         description: Company not found
+ */
+router.patch(
+    companyRoutes.adminBan,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.ADMIN]),
+    companyService.banCompany
+)
+
+/**
+ * @swagger
+ * /company/admin/{companyId}/unban:
+ *   patch:
+ *     summary: Unban a company (admin only)
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Company unbanned successfully
+ *       400:
+ *         description: Company is not banned
+ *       403:
+ *         description: Admin role required
+ *       404:
+ *         description: Company not found
+ */
+router.patch(
+    companyRoutes.adminUnban,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.ADMIN]),
+    companyService.unbanCompany
+)
 
 
 export default router

@@ -3,6 +3,7 @@ import { UserModel } from "../DB/models/user.model";
 import { UserRepo } from "../DB/repos/user.repo";
 import { ApplicationError, InvalidTokenException, NotConfirmedException, NotFoundException } from "../utils/error";
 import { verifyJwt } from "../utils/jwt";
+import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 
 export enum tokenTypeEnum {
     ACCESS = 'access',
@@ -19,10 +20,14 @@ export interface payload {
 
 const userRepo = new UserRepo(UserModel);
 export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACCESS }: { authorization?: string, tokenType?: tokenTypeEnum }) => {
+    const bearer = process.env.BEARER
+    if (!bearer) {
+        throw new InvalidTokenException("Invalid token");
+    }
     if (!authorization) {
         throw new InvalidTokenException("Invalid token");
     }
-    if (!authorization.startsWith(process.env.BEARER as string)) {
+    if (!authorization.startsWith(bearer)) {
         throw new InvalidTokenException("Invalid token");
     }
 
@@ -30,11 +35,23 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
     if (!token) {
         throw new InvalidTokenException("Invalid token");
     }
-    const payload = verifyJwt(token,
-        tokenType === tokenTypeEnum.ACCESS ?
-            process.env.ACCESS_TOKEN_SECRET as string
-            : process.env.REFRESH_TOKEN_SECRET as string
-    )
+    let payload: payload
+    try {
+        payload = verifyJwt(token,
+            tokenType === tokenTypeEnum.ACCESS ?
+                process.env.ACCESS_TOKEN_SECRET as string
+                : process.env.REFRESH_TOKEN_SECRET as string
+        )
+    } catch (err) {
+        // Normalize jsonwebtoken errors (no statusCode) into InvalidTokenException
+        if (err instanceof TokenExpiredError) {
+            throw new InvalidTokenException("Token expired")
+        }
+        if (err instanceof JsonWebTokenError) {
+            throw new InvalidTokenException("Invalid token")
+        }
+        throw new InvalidTokenException("Invalid token")
+    }
     if (!payload.iat || !payload.id) {
         throw new InvalidTokenException("Invalid token payload");
     }
@@ -53,11 +70,14 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
 
 export const auth = () => {
     return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-        const authorization = req.headers.authorization as string;
-        const { user, payload } = await decodeToken({ authorization: authorization })
-        res.locals.user = user;
-        res.locals.payload = payload;
-        next();
-
+        try {
+            const authorization = req.headers.authorization as string;
+            const { user, payload } = await decodeToken({ authorization: authorization })
+            res.locals.user = user;
+            res.locals.payload = payload;
+            next();
+        } catch (error) {
+            next(error)
+        }
     }
 }
