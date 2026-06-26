@@ -118,7 +118,14 @@ const options = {
       },
     },
   },
-  apis: ['./src/modules/**/*.ts', './src/routes.ts'], // ← fixed
+  // Support both local (ts) and production (compiled js) runtimes
+  apis: [
+    './src/modules/**/*.ts',
+    './src/routes.ts',
+
+    './dist/modules/**/*.js',
+    './dist/routes.js',
+  ],
 };
 export const swaggerSpec = swaggerJsdoc(options);
 
