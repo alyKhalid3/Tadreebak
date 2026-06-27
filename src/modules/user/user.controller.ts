@@ -14,7 +14,8 @@ const router = Router();
 
 export const userRoutes = {
     base: '/user',
-    uploadMedia: '/upload/:type',
+    uploadProfilePicture: '/upload/profilePicture',
+    uploadCoverPicture: '/upload/coverPicture',
     uploadResume: '/upload/resume',
     myApplications: '/:userId/applications',
     getProfile: '/:userId',
@@ -113,19 +114,12 @@ router.get(userRoutes.getProfile, userService.getProfile)
 router.patch(userRoutes.update, auth(), validation(updateProfileSchema), userService.updateProfile)
 /**
  * @swagger
- * /user/upload/{type}:
+ * /user/upload/profilePicture:
  *   post:
- *     summary: Upload user media (profile picture or cover picture)
+ *     summary: Upload user profile picture
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: type
- *         required: true
- *         schema:
- *           type: string
- *           enum: [profilePicture, coverPicture]
  *     requestBody:
  *       required: true
  *       content:
@@ -140,11 +134,51 @@ router.patch(userRoutes.update, auth(), validation(updateProfileSchema), userSer
  *       200:
  *         description: Image uploaded successfully
  *       400:
- *         description: File is required / invalid params type
+ *         description: File is required
  *       401:
  *         description: Unauthorized
  */
-router.post(userRoutes.uploadMedia, auth(), uploadFile({ fileType: fileTypes.images, storeIn: StoreIn.DISK }).single('file'), userService.uploadMedia)
+router.post(
+    userRoutes.uploadProfilePicture,
+    auth(),
+    (req, res, next) => { req.params.type = 'profilePicture'; next(); },
+    uploadFile({ fileType: fileTypes.images, storeIn: StoreIn.DISK }).single('file'),
+    userService.uploadMedia
+)
+
+/**
+ * @swagger
+ * /user/upload/coverPicture:
+ *   post:
+ *     summary: Upload user cover picture
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Image uploaded successfully
+ *       400:
+ *         description: File is required
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(
+    userRoutes.uploadCoverPicture,
+    auth(),
+    (req, res, next) => { req.params.type = 'coverPicture'; next(); },
+    uploadFile({ fileType: fileTypes.images, storeIn: StoreIn.DISK }).single('file'),
+    userService.uploadMedia
+)
 
 /**
  * @swagger
@@ -235,9 +269,32 @@ router.get(userRoutes.myApplications, auth(), validation(ApplicationValidation.l
  */
 router.delete(userRoutes.delete, auth(), userService.deleteAccount)
 
-router.patch(userRoutes.approveCompany, auth(), AuthZMiddleware([UserRoleEnum.ADMIN]), userService.approveCompany)
-
-
-
+// /**
+//  * @swagger
+//  * /user/approve-company/{companyId}:
+//  *   patch:
+//  *     summary: Approve a company (admin only)
+//  *     tags: [User]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - in: path
+//  *         name: companyId
+//  *         required: true
+//  *         schema:
+//  *           type: string
+//  *     responses:
+//  *       200:
+//  *         description: Company approved successfully
+//  *       400:
+//  *         description: Invalid company id / Company is already approved
+//  *       401:
+//  *         description: Unauthorized
+//  *       403:
+//  *         description: Admin role required
+//  *       404:
+//  *         description: Company not found
+//  */
+// router.patch(userRoutes.approveCompany, auth(), AuthZMiddleware([UserRoleEnum.ADMIN]), userService.approveCompany)
 
 export default router

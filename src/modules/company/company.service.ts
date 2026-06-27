@@ -84,23 +84,27 @@ export class CompanyService {
     }
     list = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { name, industry, address, companyEmail, approvedByAdmin, page = "1", limit = "10" } = req.query as Record<string, string | undefined>
+            const { name, industry, address, page = "1", limit = "10" } = req.query as Record<string, string | undefined>
 
-            const filter: Record<string, any> = { deletedAt: null, bannedAt: null }
+            const filter: Record<string, any> = { deletedAt: null, bannedAt: null, approvedByAdmin: true }
 
             if (name) filter.name = { $regex: name, $options: "i" }
             if (industry) filter.industry = { $regex: industry, $options: "i" }
             if (address) filter.address = { $regex: address, $options: "i" }
-            if (companyEmail) filter.companyEmail = companyEmail
-            if (approvedByAdmin === "true") filter.approvedByAdmin = true
-            if (approvedByAdmin === "false") filter.approvedByAdmin = false
-
             const pageNum = Math.max(1, parseInt(page || "1", 10))
             const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
             const skip = (pageNum - 1) * limitNum
 
             const [companies, total] = await Promise.all([
-                this.companyRepo.find({ filter, options: { skip, limit: limitNum, sort: { createdAt: -1 }, populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }] } }),
+                this.companyRepo.find({
+                    filter, options: {
+                        skip,
+                        limit: limitNum,
+                        sort: { createdAt: -1 },
+                        populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                        select: "-legalAttachment -companyEmail -approvedByAdmin" // Exclude legalAttachment from the response
+                    }
+                }),
                 companyModel.countDocuments(filter),
             ])
 
@@ -306,6 +310,30 @@ export class CompanyService {
                 data: { bannedAt: null },
             })
             return successHandler({ res, message: "Company unbanned successfully" })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Admin: approve a company ----
+    approveCompanyAdmin = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+            const company = await this.companyRepo.findById({ id: companyId as string })
+            if (!company) {
+                throw new ApplicationError("Company not found", 404)
+            }
+            if (company.approvedByAdmin) {
+                throw new ApplicationError("Company is already approved", 400)
+            }
+            await this.companyRepo.update({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                data: { approvedByAdmin: true }
+            })
+            return successHandler({ res, message: "Company approved successfully" })
         } catch (error) {
             next(error)
         }

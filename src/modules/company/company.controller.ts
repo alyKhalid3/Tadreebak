@@ -22,6 +22,7 @@ export const companyRoutes = {
     adminPending: '/admin/pending',
     adminBan: '/admin/:companyId/ban',
     adminUnban: '/admin/:companyId/unban',
+    adminApprove: '/admin/:companyId/approve',
 
 }
 const companyService = new CompanyService()
@@ -421,6 +422,37 @@ router.patch(
     AuthZMiddleware([UserRoleEnum.ADMIN]),
     companyService.unbanCompany
 )
-
+/**
+ * @swagger
+ * /company/admin/{companyId}/approve:
+ *   patch:
+ *     summary: Approve a company (admin only)
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Company approved successfully
+ *       400:
+ *         description: Invalid company id / Company is already approved
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin role required
+ *       404:
+ *         description: Company not found
+ */
+router.patch(
+    companyRoutes.adminApprove,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.ADMIN]),
+    companyService.approveCompanyAdmin
+)
 
 export default router

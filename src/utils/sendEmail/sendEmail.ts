@@ -24,7 +24,7 @@ const getTransporter = (): Transporter => {
 // the API always reported success even when the email never went out).
 export const sendEmail = async ({ to, subject, html }: { to: string, subject: string, html: string }) => {
     const info = await getTransporter().sendMail({
-        from: `Tadreebak<${process.env.EMAIL}>`,
+        from: `Tadreebak <${process.env.EMAIL}>`,
         to,
         subject,
         html

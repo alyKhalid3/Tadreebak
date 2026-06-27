@@ -65,29 +65,29 @@ export class UserService {
             next(error)
         }
     }
-    approveCompany = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const { companyId } = req.params
-            if (!isObjectIdOrHexString(companyId)) {
-                throw new ApplicationError("Invalid company id", 400)
-            }
-            const company = await this.companyRepo.findById({ id: companyId as string })
-            if (!company) {
-                throw new ApplicationError("Company not found", 404)
-            }
-            if (company.approvedByAdmin) {
-                throw new ApplicationError("Company is already approved", 400)
-            }
+    // approveCompany = async (req: Request, res: Response, next: NextFunction) => {
+    //     try {
+    //         const { companyId } = req.params
+    //         if (!isObjectIdOrHexString(companyId)) {
+    //             throw new ApplicationError("Invalid company id", 400)
+    //         }
+    //         const company = await this.companyRepo.findById({ id: companyId as string })
+    //         if (!company) {
+    //             throw new ApplicationError("Company not found", 404)
+    //         }
+    //         if (company.approvedByAdmin) {
+    //             throw new ApplicationError("Company is already approved", 400)
+    //         }
 
-            const updatedCompany = await this.companyRepo.update({
-                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
-                data: { approvedByAdmin: true }
-            })
-            return successHandler({ res, message: "Company approved successfully" })
-        } catch (error) {
-            next(error)
-        }
-    }
+    //         const updatedCompany = await this.companyRepo.update({
+    //             filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+    //             data: { approvedByAdmin: true }
+    //         })
+    //         return successHandler({ res, message: "Company approved successfully" })
+    //     } catch (error) {
+    //         next(error)
+    //     }
+    // }
     getProfile = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { userId } = req.params
