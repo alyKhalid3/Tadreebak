@@ -23,7 +23,7 @@ export const authRoutes = {
     resendEmailOtp: '/resend-otp'
 }
 const router = Router()
-router.use(authLimiter)
+// router.use(authLimiter)
 const authService = new AuthService()
 
 

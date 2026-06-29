@@ -18,9 +18,11 @@ if (process.env.NODE_ENV !== 'production') {
 
 export const bootstrap = () => {
 
+    app.set('trust proxy', 1);
 
     app.use(express.json());
     app.use(helmet());
+
     app.use(globalLimiter)
     app.use(cors());
     const port = process.env.PORT || 3000;
@@ -30,12 +32,10 @@ export const bootstrap = () => {
     app.use('/api/v1', baseRouter)
     app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-    // 404 for unmatched routes
     app.use((req: Request, res: Response) => {
         return res.status(404).json({ errMsg: 'Route not found', cause: 404 })
     });
 
-    // Centralized error handler — never leak the stack in production
     app.use((err: IError, req: Request, res: Response, next: NextFunction): Response | void => {
         const statusCode = err.statusCode || 500;
         const body: Record<string, unknown> = {
