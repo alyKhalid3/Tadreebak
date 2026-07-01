@@ -2,7 +2,11 @@ import { cloudConfig } from "./cloudinary"
 
 export const uploadSingleFile = async ({ path, folder = "others" }: { path: string, folder?: string }) => {
     const { public_id, secure_url } = await cloudConfig().uploader.upload(path, {
-        folder: `${process.env.APP_NAME}/${folder}`
+        folder: `${process.env.APP_NAME}/${folder}`,
+        // resource_type "auto" lets Cloudinary pick correctly per file:
+        // images stay images, but PDFs are stored as "raw" files instead of
+        // being forced into image mode (which produced broken/unviewable links).
+        resource_type: "auto"
     })
     return { public_id, secure_url }
 }
