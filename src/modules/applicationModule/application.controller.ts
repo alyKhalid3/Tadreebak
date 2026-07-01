@@ -3,10 +3,11 @@ import { ApplicationService } from "./application.service";
 import { validation } from "../../middleware/validation.middleware";
 import { auth } from "../../middleware/authentication.middleware";
 import * as ApplicationValidation from "./application.validation";
+import { fileTypes, StoreIn, uploadFile } from "../../utils/multer/multer";
 
 // This router is mounted on the company-scoped internships router, so it
-// inherits :companyId and :internId (mergeParams: true).
-const router = Router()
+// must merge :companyId and :internId from the parent route.
+const router = Router({ mergeParams: true })
 
 const applicationService = new ApplicationService()
 
@@ -31,13 +32,17 @@ const applicationService = new ApplicationService()
  *           type: string
  *     requestBody:
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
  *               coverLetter:
  *                 type: string
  *                 maxLength: 2000
+ *               resume:
+ *                 type: string
+ *                 format: binary
+ *                 description: Optional CV upload. If omitted, the CV on the applicant's profile is used; if that is also missing the request fails.
  *     responses:
  *       201:
  *         description: Application submitted successfully
@@ -49,6 +54,7 @@ const applicationService = new ApplicationService()
 router.post(
     '/',
     auth(),
+    uploadFile({ fileType: fileTypes.pdf, storeIn: StoreIn.DISK }).single('file'),
     validation(ApplicationValidation.createApplicationSchema),
     applicationService.create
 )

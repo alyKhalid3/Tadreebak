@@ -9,6 +9,7 @@ import { IInternShip } from "../../DB/types/internship.type";
 import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import { assertOwnedCompany } from "../../utils/companyAccess";
+import { uploadSingleFile } from "../../utils/multer/cloudinary.service";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
@@ -54,21 +55,41 @@ export class ApplicationService {
             const internId = req.params.internId as string
             const { coverLetter } = req.body as { coverLetter?: string }
             const user = res.locals.user
-
+            
             const internship = await this.getInternshipForApply(internId, companyId)
-
             // The company owner cannot apply to their own internship.
             if (internship.addedBy.toString() === user._id.toString()) {
                 throw new ApplicationError("You cannot apply to your own internship", 400)
             }
 
-            // Require a resume on the profile before applying.
+            // CV resolution, in priority order:
+            //   1. a freshly uploaded file (multipart "resume" field)
+            //   2. otherwise the CV stored on the applicant's profile
+            //   3. otherwise -> error
+            const uploadedFile = req.file as Express.Multer.File | undefined
+            let resume: { public_id: string, secure_url: string }
+
             const applicant = await this.userRepo.findById({ id: user._id.toString() })
             if (!applicant) {
                 throw new NotFoundException("User not found")
             }
-            if (!applicant.resume?.secure_url) {
-                throw new ApplicationError("Please upload a resume to your profile before applying", 400)
+
+            if (uploadedFile) {
+                const uploaded = await uploadSingleFile({
+                    path: uploadedFile.path,
+                    folder: `/users/${applicant.firstName}_${applicant._id}/applications`,
+                })
+                resume = { public_id: uploaded.public_id, secure_url: uploaded.secure_url }
+            } else if (applicant.resume?.secure_url) {
+                resume = {
+                    public_id: applicant.resume.public_id,
+                    secure_url: applicant.resume.secure_url,
+                }
+            } else {
+                throw new ApplicationError(
+                    "Please upload a CV file or add a CV to your profile before applying",
+                    400,
+                )
             }
 
             // Snapshot the resume at apply time. The compound unique index on
@@ -76,10 +97,7 @@ export class ApplicationService {
             const applicationData: Partial<IApplication> = {
                 internshipId: new mongoose.Types.ObjectId(internId),
                 studentId: user._id,
-                resume: {
-                    public_id: applicant.resume.public_id,
-                    secure_url: applicant.resume.secure_url,
-                },
+                resume,
                 status: ApplicationStatus.PENDING,
             }
             if (coverLetter) {
