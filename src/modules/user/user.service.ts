@@ -51,10 +51,14 @@ export class UserService {
             if (!file) {
                 throw new ApplicationError("Resume file is required", 400)
             }
-            const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/resume` })
+            const { public_id, secure_url } = await uploadSingleFile({
+                path: file.path,
+                folder: `/users/${user.firstName}_${user._id}/resume`,
+                resourceType: "raw",
+            })
             // Destroy the previous resume (if any) to avoid orphaned Cloudinary assets.
             if (user.resume?.public_id) {
-                await destroySingleFile(user.resume.public_id)
+                await destroySingleFile(user.resume.public_id, "raw")
             }
             await this.userRepo.update({
                 filter: { _id: user._id },

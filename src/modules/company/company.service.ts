@@ -31,7 +31,11 @@ export class CompanyService {
             });
             if (company)
                 throw new ApplicationError('company name or email already exists', 400)
-            const { public_id, secure_url } = await uploadSingleFile({ path: file.path, folder: `/users/${user.firstName}_${user._id}/companies` });
+            const { public_id, secure_url } = await uploadSingleFile({
+                path: file.path,
+                folder: `/users/${user.firstName}_${user._id}/companies`,
+                resourceType: "raw",
+            });
             const createdCompany = await this.companyRepo.create({ data: { ...data, createdBy: user._id, legalAttachment: { public_id, secure_url } } })
 
             // Promote the creator to COMPANY_OWNER. Role is granted at creation

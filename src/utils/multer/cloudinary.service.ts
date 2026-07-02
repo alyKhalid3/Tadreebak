@@ -1,12 +1,28 @@
 import { cloudConfig } from "./cloudinary"
 
-export const uploadSingleFile = async ({ path, folder = "others" }: { path: string, folder?: string }) => {
+// Cloudinary stores files differently based on resource_type:
+//   - "image" (default) — for pictures; the URL path is /image/upload/...
+//   - "raw"              — for PDFs and other non-image files; path is /raw/upload/...
+// If a PDF is uploaded as "image" (the Cloudinary default), its link resolves
+// but never opens correctly. Callers must pass resourceType: "raw" for PDFs.
+//
+// NOTE: Cloudinary's CDN URL parser treats the last dot-separated segment as a
+// "format" suffix. You CANNOT put .pdf in the URL path for raw files — it will
+// 404 (wrong format) or 401 (raw→pdf conversion not allowed). The raw file's
+// Cloudinary URL will always have a random public_id with no extension. Browsers
+// need a proxy endpoint that serves the file with correct Content-Type headers.
+export const uploadSingleFile = async ({
+    path,
+    folder = "others",
+    resourceType = "image",
+}: {
+    path: string,
+    folder?: string,
+    resourceType?: "image" | "raw",
+}) => {
     const { public_id, secure_url } = await cloudConfig().uploader.upload(path, {
         folder: `${process.env.APP_NAME}/${folder}`,
-        // resource_type "auto" lets Cloudinary pick correctly per file:
-        // images stay images, but PDFs are stored as "raw" files instead of
-        // being forced into image mode (which produced broken/unviewable links).
-        resource_type: "auto"
+        resource_type: resourceType,
     })
     return { public_id, secure_url }
 }
@@ -19,9 +35,13 @@ export const uploadMultiFiles = async ({ paths = [], dest }: { paths?: string[],
     }
     return images
 }
-export const destroySingleFile = async (public_id: string) => {
-    await cloudConfig().uploader.destroy(public_id)
+
+// Destroy must match the resource_type the file was uploaded with, otherwise
+// the destroy call silently does nothing. "raw" covers PDFs; default covers images.
+export const destroySingleFile = async (public_id: string, resourceType: "image" | "raw" = "image") => {
+    await cloudConfig().uploader.destroy(public_id, { resource_type: resourceType })
 }
+
 export const deleteManyFiles = async ({ public_ids = [] }: { public_ids?: string[] }) => {
     await cloudConfig().api.delete_resources(public_ids)
 }

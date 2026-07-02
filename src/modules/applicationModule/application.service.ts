@@ -78,6 +78,7 @@ export class ApplicationService {
                 const uploaded = await uploadSingleFile({
                     path: uploadedFile.path,
                     folder: `/users/${applicant.firstName}_${applicant._id}/applications`,
+                    resourceType: "raw",
                 })
                 resume = { public_id: uploaded.public_id, secure_url: uploaded.secure_url }
             } else if (applicant.resume?.secure_url) {
