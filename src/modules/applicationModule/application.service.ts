@@ -10,6 +10,8 @@ import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import { assertOwnedCompany } from "../../utils/companyAccess";
 import { uploadSingleFile } from "../../utils/multer/cloudinary.service";
+import { notificationEmitter } from "../../utils/notifications/notificationEvents";
+import { NotificationType } from "../../DB/types/notification.type";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
@@ -116,6 +118,17 @@ export class ApplicationService {
                 throw err
             }
 
+            // Notify the company owner that a new application came in.
+            notificationEmitter.publish(NotificationType.APPLICATION_SUBMITTED, {
+                recipient: internship.addedBy.toString(),
+                data: {
+                    applicationId: (application as any)._id.toString(),
+                    internshipId: internId,
+                    internshipTitle: internship.title,
+                    studentName: `${applicant.firstName} ${applicant.lastName}`,
+                },
+            })
+
             return successHandler({ res, message: "Application submitted successfully", data: { application }, status: 201 })
         } catch (error) {
             next(error)
@@ -192,7 +205,25 @@ export class ApplicationService {
                 throw new ApplicationError("Only pending applications can be cancelled", 400)
             }
 
+            // Fetch context (internship owner + title, student name) before we
+            // delete the row, so the notification is descriptive.
+            const internship = await this.internRepo.findById({ id: application.internshipId.toString() })
+            const student = await this.userRepo.findById({ id: user._id.toString() })
+
             await this.applicationRepo.deleteMany({ filter: { _id: new mongoose.Types.ObjectId(applicationId as string) } })
+
+            // Notify the company owner that the student withdrew.
+            if (internship) {
+                notificationEmitter.publish(NotificationType.APPLICATION_CANCELLED, {
+                    recipient: internship.addedBy.toString(),
+                    data: {
+                        applicationId: applicationId as string,
+                        internshipId: application.internshipId.toString(),
+                        internshipTitle: internship.title,
+                        studentName: student ? `${student.firstName} ${student.lastName}` : undefined,
+                    },
+                })
+            }
 
             return successHandler({ res, message: "Application cancelled successfully" })
         } catch (error) {
@@ -278,6 +309,20 @@ export class ApplicationService {
                 filter: { _id: new mongoose.Types.ObjectId(applicationId as string) },
                 data: { status, reviewedBy: user._id },
                 options: { returnDocument: "after" },
+            })
+
+            // Notify the student of the decision. Fetch the internship title so
+            // the message is descriptive (cheap single read, already on the
+            // hot path of the ownership check).
+            const internship = await this.internRepo.findById({ id: internId })
+            notificationEmitter.publish(NotificationType.APPLICATION_REVIEWED, {
+                recipient: application.studentId.toString(),
+                data: {
+                    applicationId: applicationId as string,
+                    internshipId: internId,
+                    internshipTitle: internship?.title,
+                    status,
+                },
             })
 
             return successHandler({ res, message: `Application ${status}`, data: { application: updated } })

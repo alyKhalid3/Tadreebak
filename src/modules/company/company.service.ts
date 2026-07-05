@@ -8,6 +8,8 @@ import { destroySingleFile, uploadSingleFile } from "../../utils/multer/cloudina
 import { successHandler } from "../../utils/successHandler"
 import { companyModel } from "../../DB/models/company.model"
 import { UserRoleEnum } from "../../DB/types/user.type"
+import { notificationEmitter } from "../../utils/notifications/notificationEvents"
+import { NotificationType } from "../../DB/types/notification.type"
 
 export class CompanyService {
     private companyRepo = new CompanyRepo()
@@ -287,6 +289,12 @@ export class CompanyService {
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: { bannedAt: new Date() },
             })
+
+            notificationEmitter.publish(NotificationType.COMPANY_BANNED, {
+                recipient: company.createdBy.toString(),
+                data: { companyId: company._id.toString(), companyName: company.name },
+            })
+
             return successHandler({ res, message: "Company banned successfully" })
         } catch (error) {
             next(error)
@@ -313,6 +321,12 @@ export class CompanyService {
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: { bannedAt: null },
             })
+
+            notificationEmitter.publish(NotificationType.COMPANY_UNBANNED, {
+                recipient: company.createdBy.toString(),
+                data: { companyId: company._id.toString(), companyName: company.name },
+            })
+
             return successHandler({ res, message: "Company unbanned successfully" })
         } catch (error) {
             next(error)
@@ -337,6 +351,12 @@ export class CompanyService {
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: { approvedByAdmin: true }
             })
+
+            notificationEmitter.publish(NotificationType.COMPANY_APPROVED, {
+                recipient: company.createdBy.toString(),
+                data: { companyId: company._id.toString(), companyName: company.name },
+            })
+
             return successHandler({ res, message: "Company approved successfully" })
         } catch (error) {
             next(error)
