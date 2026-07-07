@@ -20,8 +20,7 @@ export class CompanyService {
             const user = res.locals.user
             const file = req.file as Express.Multer.File
 
-            // Bug 8: if multer rejected the upload (wrong type / too large) or no
-            // file was sent, req.file is undefined. Guard before touching file.path.
+         
             if (!file) {
                 throw new ApplicationError('Legal attachment PDF is required', 400)
             }

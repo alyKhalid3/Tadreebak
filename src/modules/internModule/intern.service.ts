@@ -14,7 +14,7 @@ export class InternService {
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const companyId = req.params.companyId as string
-            const { title, description, location, workingTime, softSkills, technicalSkills } = req.body as Record<string, any>
+            const { title, description, location, workingTime, softSkills, technicalSkills, questions } = req.body as Record<string, any>
             const user = res.locals.user
 
             await assertOwnedCompany(companyId, user._id.toString())
@@ -27,6 +27,7 @@ export class InternService {
                     workingTime,
                     softSkills: softSkills as string[],
                     technicalSkills: technicalSkills as string[],
+                    questions,
                     companyId: new mongoose.Types.ObjectId(companyId),
                     addedBy: user._id,
                     updatedBy: user._id,

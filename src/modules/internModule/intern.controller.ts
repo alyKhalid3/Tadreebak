@@ -179,6 +179,37 @@ const companyRouter = Router({ mergeParams: true })
  *                 items:
  *                   type: string
  *                 minItems: 1
+ *               questions:
+ *                 type: array
+ *                 description: Optional internship questions (mixed MCQ and writing). Use a wholesale replace on update.
+ *                 items:
+ *                   oneOf:
+ *                     - type: object
+ *                       required:
+ *                         - type
+ *                         - prompt
+ *                         - options
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           enum: [mcq]
+ *                         prompt:
+ *                           type: string
+ *                         options:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           minItems: 2
+ *                     - type: object
+ *                       required:
+ *                         - type
+ *                         - prompt
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           enum: [writing]
+ *                         prompt:
+ *                           type: string
  *     responses:
  *       201:
  *         description: Internship created successfully
@@ -248,6 +279,37 @@ companyRouter.post('/', auth(), validation(InternValidation.createInternSchema),
  *                 type: array
  *                 items:
  *                   type: string
+ *               questions:
+ *                 type: array
+ *                 description: Optional internship questions (mixed MCQ and writing). Replaces the full array.
+ *                 items:
+ *                   oneOf:
+ *                     - type: object
+ *                       required:
+ *                         - type
+ *                         - prompt
+ *                         - options
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           enum: [mcq]
+ *                         prompt:
+ *                           type: string
+ *                         options:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           minItems: 2
+ *                     - type: object
+ *                       required:
+ *                         - type
+ *                         - prompt
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           enum: [writing]
+ *                         prompt:
+ *                           type: string
  *     responses:
  *       200:
  *         description: Internship updated successfully

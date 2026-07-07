@@ -6,17 +6,22 @@ import { UserRepo } from "../../DB/repos/user.repo";
 import { ApplicationModel } from "../../DB/models/application.model";
 import { ApplicationStatus, IApplication } from "../../DB/types/application.type";
 import { IInternShip } from "../../DB/types/internship.type";
+import { IAnswer, IQuestion, QuestionType } from "../../DB/types/question.type";
 import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import { assertOwnedCompany } from "../../utils/companyAccess";
 import { uploadSingleFile } from "../../utils/multer/cloudinary.service";
 import { notificationEmitter } from "../../utils/notifications/notificationEvents";
 import { NotificationType } from "../../DB/types/notification.type";
+import { emailEmitter } from "../../utils/sendEmail/emailEvents";
+import { acceptanceTemplate } from "../../utils/sendEmail/generateHtml";
+import { CompanyRepo } from "../../DB/repos/company.repo";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
     private internRepo = new InternRepo()
     private userRepo = new UserRepo()
+    private companyRepo = new CompanyRepo()
 
     // Fetch an active, public internship and confirm it belongs to the given
     // company. Throws if anything is off. Used by the apply flow.
@@ -55,13 +60,50 @@ export class ApplicationService {
         try {
             const companyId = req.params.companyId as string
             const internId = req.params.internId as string
-            const { coverLetter } = req.body as { coverLetter?: string }
+            const { coverLetter, answers: rawAnswers } = req.body as { coverLetter?: string, answers?: any[] }
             const user = res.locals.user
             
             const internship = await this.getInternshipForApply(internId, companyId)
             // The company owner cannot apply to their own internship.
             if (internship.addedBy.toString() === user._id.toString()) {
                 throw new ApplicationError("You cannot apply to your own internship", 400)
+            }
+
+            // Validate answers against the internship's questions (if any) and
+            // snapshot each question alongside the response so the company
+            // always sees what was asked even if the internship is later edited.
+            const questions = internship.questions ?? []
+            let snapshotAnswers: IAnswer[] = []
+            if (questions.length > 0) {
+                const answers = rawAnswers ?? []
+                if (answers.length !== questions.length) {
+                    throw new ApplicationError("You must answer all internship questions", 400)
+                }
+                snapshotAnswers = questions.map((question: IQuestion, i: number) => {
+                    const answer = answers[i]
+                    if (question.type === QuestionType.MCQ) {
+                        if (answer.type !== 'mcq') {
+                            throw new ApplicationError(`Question ${i + 1} requires an MCQ answer`, 400)
+                        }
+                        if (!question.options.includes(answer.selectedOption)) {
+                            throw new ApplicationError(`Answer for question ${i + 1} is not a valid option`, 400)
+                        }
+                        return {
+                            type: QuestionType.MCQ,
+                            prompt: question.prompt,
+                            options: question.options,
+                            selectedOption: answer.selectedOption,
+                        }
+                    }
+                    if (answer.type !== 'writing') {
+                        throw new ApplicationError(`Question ${i + 1} requires a writing answer`, 400)
+                    }
+                    return {
+                        type: QuestionType.WRITING,
+                        prompt: question.prompt,
+                        text: answer.text,
+                    }
+                })
             }
 
             // CV resolution, in priority order:
@@ -102,6 +144,7 @@ export class ApplicationService {
                 studentId: user._id,
                 resume,
                 status: ApplicationStatus.PENDING,
+                answers: snapshotAnswers,
             }
             if (coverLetter) {
                 applicationData.coverLetter = coverLetter
@@ -326,6 +369,67 @@ export class ApplicationService {
             })
 
             return successHandler({ res, message: `Application ${status}`, data: { application: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Company: send acceptance email (manual trigger) ----
+    sendAcceptanceEmail = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const companyId = req.params.companyId as string
+            const internId = req.params.internId as string
+            const { applicationId } = req.params
+            const user = res.locals.user
+
+            const company = await assertOwnedCompany(companyId, user._id.toString())
+
+            if (!isObjectIdOrHexString(applicationId)) {
+                throw new ApplicationError("Invalid application id", 400)
+            }
+
+            const application = await this.applicationRepo.findOne({ filter: { _id: applicationId as string } })
+            if (!application) {
+                throw new NotFoundException("Application not found")
+            }
+            if (application.internshipId.toString() !== internId) {
+                throw new NotFoundException("Application not found")
+            }
+            if (application.status !== ApplicationStatus.ACCEPTED) {
+                throw new ApplicationError("Can only send an acceptance email for an accepted application", 400)
+            }
+
+            const internship = await this.internRepo.findById({ id: internId })
+            if (!internship) {
+                throw new NotFoundException("Internship not found")
+            }
+
+            const student = await this.userRepo.findById({ id: application.studentId.toString() })
+            if (!student) {
+                throw new NotFoundException("Student not found")
+            }
+
+            const preKnowledge = [
+                ...(internship.technicalSkills || []),
+                ...(internship.softSkills || []),
+            ]
+            const studentName = student.firstName
+            const subject = `Congratulations! You've been accepted for ${internship.title}`
+            const html = acceptanceTemplate({
+                studentName,
+                internshipTitle: internship.title,
+                companyName: company.name,
+                preKnowledge,
+                subject,
+            })
+
+            emailEmitter.publish('send-email-acceptance', {
+                to: student.email,
+                subject,
+                html,
+            })
+
+            return successHandler({ res, message: "Acceptance email sent successfully" })
         } catch (error) {
             next(error)
         }

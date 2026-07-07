@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { fileAttributtes } from "./user.type";
+import { IAnswer } from "./question.type";
 
 
 
@@ -18,4 +19,5 @@ export interface IApplication {
     // always sees what was submitted even if the student later changes it.
     resume: fileAttributtes;
     reviewedBy?: Types.ObjectId;
+    answers?: IAnswer[];
 }

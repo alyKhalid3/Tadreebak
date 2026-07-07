@@ -4,6 +4,7 @@ import { validation } from "../../middleware/validation.middleware";
 import { auth } from "../../middleware/authentication.middleware";
 import * as ApplicationValidation from "./application.validation";
 import { fileTypes, StoreIn, uploadFile } from "../../utils/multer/multer";
+import { parseJsonField } from "../../middleware/parseJsonField.middleware";
 
 // This router is mounted on the company-scoped internships router, so it
 // must merge :companyId and :internId from the parent route.
@@ -43,11 +44,19 @@ const applicationService = new ApplicationService()
  *                 type: string
  *                 format: binary
  *                 description: Optional CV upload. If omitted, the CV on the applicant's profile is used; if that is also missing the request fails.
+ *               answers:
+ *                 type: string
+ *                 format: json
+ *                 description: >
+ *                   Stringified JSON array of answers, one per internship question (in order).
+ *                   Required when the internship has questions. Shapes:
+ *                   [{"type":"mcq","selectedOption":"option text"}] or
+ *                   [{"type":"writing","text":"response text"}]. Mixed types allowed.
  *     responses:
  *       201:
  *         description: Application submitted successfully
  *       400:
- *         description: Internship closed / resume missing / already applied
+ *         description: Internship closed / resume missing / already applied / missing or invalid answers
  *       404:
  *         description: Internship not found
  */
@@ -55,6 +64,7 @@ router.post(
     '/',
     auth(),
     uploadFile({ fileType: fileTypes.pdf, storeIn: StoreIn.DISK }).single('file'),
+    parseJsonField('answers'),
     validation(ApplicationValidation.createApplicationSchema),
     applicationService.create
 )
@@ -198,6 +208,46 @@ router.delete(
     '/:applicationId',
     auth(),
     applicationService.cancel
+)
+
+/**
+ * @swagger
+ * /company/{companyId}/internships/{internId}/applications/{applicationId}/send-acceptance-email:
+ *   post:
+ *     summary: Send an acceptance email to an accepted applicant (company owner only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Acceptance email sent successfully
+ *       400:
+ *         description: Application is not accepted yet
+ *       403:
+ *         description: You are not the owner of this company
+ *       404:
+ *         description: Application/Internship/Student not found
+ */
+router.post(
+    '/:applicationId/send-acceptance-email',
+    auth(),
+    applicationService.sendAcceptanceEmail
 )
 
 export default router

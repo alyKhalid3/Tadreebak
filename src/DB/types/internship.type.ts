@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-
+import { IQuestion } from "./question.type";
 
 
 
@@ -24,4 +24,5 @@ export interface IInternShip {
     updatedBy: Types.ObjectId;
     closed: boolean;
     companyId: Types.ObjectId;
+    questions?: IQuestion[];
 }
