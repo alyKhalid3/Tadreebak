@@ -25,4 +25,5 @@ export interface IInternShip {
     closed: boolean;
     companyId: Types.ObjectId;
     questions?: IQuestion[];
+    preKnowledge?: string[];
 }

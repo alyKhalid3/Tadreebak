@@ -22,6 +22,7 @@ export const createInternSchema = z.object({
     softSkills: z.array(z.string()).min(1),
     technicalSkills: z.array(z.string()).min(1),
     questions: z.array(questionSchema).optional(),
+    preKnowledge: z.array(z.string()).optional(),
 })
 
 export const updateInternSchema = createInternSchema.partial()

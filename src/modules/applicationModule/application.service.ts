@@ -409,10 +409,7 @@ export class ApplicationService {
                 throw new NotFoundException("Student not found")
             }
 
-            const preKnowledge = [
-                ...(internship.technicalSkills || []),
-                ...(internship.softSkills || []),
-            ]
+            const preKnowledge = internship.preKnowledge ?? []
             const studentName = student.firstName
             const subject = `Congratulations! You've been accepted for ${internship.title}`
             const html = acceptanceTemplate({

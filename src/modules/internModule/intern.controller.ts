@@ -210,6 +210,11 @@ const companyRouter = Router({ mergeParams: true })
  *                           enum: [writing]
  *                         prompt:
  *                           type: string
+ *               preKnowledge:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email.
  *     responses:
  *       201:
  *         description: Internship created successfully
@@ -310,6 +315,11 @@ companyRouter.post('/', auth(), validation(InternValidation.createInternSchema),
  *                           enum: [writing]
  *                         prompt:
  *                           type: string
+ *               preKnowledge:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email. Replaces the full array.
  *     responses:
  *       200:
  *         description: Internship updated successfully
