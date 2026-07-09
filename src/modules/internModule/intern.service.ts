@@ -4,6 +4,7 @@ import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import mongoose, { isObjectIdOrHexString } from "mongoose";
 import { InternShipModel } from "../../DB/models/internship.model";
+import { companyModel } from "../../DB/models/company.model";
 import { assertOwnedCompany } from "../../utils/companyAccess";
 import { ApplicationRepo } from "../../DB/repos/application.repo";
 
@@ -17,7 +18,14 @@ export class InternService {
             const { title, description, location, workingTime, softSkills, technicalSkills, questions, preKnowledge } = req.body as Record<string, any>
             const user = res.locals.user
 
-            await assertOwnedCompany(companyId, user._id.toString())
+            const company = await assertOwnedCompany(companyId, user._id.toString())
+
+            if (company.internshipCredits <= 0) {
+                throw new ApplicationError(
+                    "You have reached your internship posting limit. Purchase a plan to post more internships.",
+                    402,
+                )
+            }
 
             const internship = await this.internRepo.create({
                 data: {
@@ -34,6 +42,11 @@ export class InternService {
                     updatedBy: user._id,
                 }
             })
+
+            await companyModel.updateOne(
+                { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
+                { $inc: { internshipCredits: -1 } },
+            )
 
             return successHandler({ res, message: "Internship created successfully", data: { internship }, status: 201 })
         } catch (error) {

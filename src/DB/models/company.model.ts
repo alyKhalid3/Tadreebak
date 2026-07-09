@@ -35,7 +35,8 @@ export const companySchema = new mongoose.Schema<ICompany>({
             secure_url: String
         }, required: true
     },
-    approvedByAdmin: { type: Boolean, default: false }
+    approvedByAdmin: { type: Boolean, default: false },
+    internshipCredits: { type: Number, default: 1, min: 0 }
 }, { timestamps: true });
 
 export const companyModel = mongoose.model<ICompany>('Company', companySchema);

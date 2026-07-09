@@ -22,4 +22,5 @@ export interface ICompany {
     deletedAt: Date
     legalAttachment:fileAttributtes
     approvedByAdmin: boolean
+    internshipCredits: number
 }

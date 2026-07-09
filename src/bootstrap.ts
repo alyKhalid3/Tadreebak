@@ -11,13 +11,12 @@ import { swaggerSpec } from './config/swagger';
 import helmet from 'helmet';
 import cors from 'cors';
 import { globalLimiter } from './middleware/rateLimiter';
-if (process.env.NODE_ENV !== 'production') {
-    dotenv.config({ path: path.resolve('./src/config/.env') });
-}
+
+dotenv.config({ path: path.resolve('./src/config/.env') });
 
 
 export const bootstrap = () => {
-
+    
     app.set('trust proxy', 1);
 
     app.use(express.json());
