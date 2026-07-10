@@ -23,7 +23,7 @@ export const bootstrap = () => {
     app.use(express.json());
     app.use(helmet());
 
-    app.use(globalLimiter)
+    // app.use(globalLimiter)
     const port = process.env.PORT || 3000;
 
     connectDB();
