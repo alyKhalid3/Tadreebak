@@ -25,6 +25,7 @@ export const applicationSchema = new mongoose.Schema<IApplication>({
     },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     answers: { type: [answerSchema], default: [] },
+    completed: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // A student may only ever submit one application to a given internship — even

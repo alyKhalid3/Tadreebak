@@ -431,4 +431,44 @@ export class ApplicationService {
             next(error)
         }
     }
+
+    // ---- Company: mark an accepted application as completed ----
+    markCompleted = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const companyId = req.params.companyId as string
+            const internId = req.params.internId as string
+            const { applicationId } = req.params
+            const user = res.locals.user
+
+            await this.getOwnedInternship(internId, companyId, user._id.toString())
+
+            if (!isObjectIdOrHexString(applicationId)) {
+                throw new ApplicationError("Invalid application id", 400)
+            }
+
+            const application = await this.applicationRepo.findOne({ filter: { _id: applicationId as string } })
+            if (!application) {
+                throw new NotFoundException("Application not found")
+            }
+            if (application.internshipId.toString() !== internId) {
+                throw new NotFoundException("Application not found")
+            }
+            if (application.status !== ApplicationStatus.ACCEPTED) {
+                throw new ApplicationError("Can only mark accepted applications as completed", 400)
+            }
+            if (application.completed) {
+                throw new ApplicationError("Application is already marked as completed", 400)
+            }
+
+            const updated = await this.applicationRepo.update({
+                filter: { _id: new mongoose.Types.ObjectId(applicationId as string) },
+                data: { completed: true },
+                options: { returnDocument: "after" },
+            })
+
+            return successHandler({ res, message: "Application marked as completed", data: { application: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
 }

@@ -20,4 +20,5 @@ export interface IApplication {
     resume: fileAttributtes;
     reviewedBy?: Types.ObjectId;
     answers?: IAnswer[];
+    completed: boolean;
 }

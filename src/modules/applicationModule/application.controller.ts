@@ -250,4 +250,44 @@ router.post(
     applicationService.sendAcceptanceEmail
 )
 
+/**
+ * @swagger
+ * /company/{companyId}/internships/{internId}/applications/{applicationId}/complete:
+ *   patch:
+ *     summary: Mark an accepted application as completed (company owner only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Application marked as completed
+ *       400:
+ *         description: Application is not accepted / already completed
+ *       403:
+ *         description: You are not the owner of this company
+ *       404:
+ *         description: Application not found
+ */
+router.patch(
+    '/:applicationId/complete',
+    auth(),
+    applicationService.markCompleted
+)
+
 export default router
