@@ -189,7 +189,7 @@ billingWebhookRouter.post('/', billingService.handlePaymobWebhook)
  *     tags: [Billing]
  *     description: >
  *       Paymob redirects the user here after iframe payment. The full transaction
- *       data with HMAC is sent via a separate POST; this GET handler just acknowledges.
+ *       data with HMAC is sent via a separate POST webhook; this GET handler just acknowledges.
  *     responses:
  *       200:
  *         description: Redirect acknowledged

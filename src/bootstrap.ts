@@ -16,14 +16,14 @@ dotenv.config({ path: path.resolve('./src/config/.env') });
 
 
 export const bootstrap = () => {
-    
+
     app.set('trust proxy', 1);
+    app.use(cors());
 
     app.use(express.json());
     app.use(helmet());
 
     app.use(globalLimiter)
-    app.use(cors());
     const port = process.env.PORT || 3000;
 
     connectDB();
