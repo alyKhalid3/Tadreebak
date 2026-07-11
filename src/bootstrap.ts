@@ -18,7 +18,16 @@ dotenv.config({ path: path.resolve('./src/config/.env') });
 export const bootstrap = () => {
 
     app.set('trust proxy', 1);
-    app.use(cors());
+
+    app.use(cors({
+        origin: [
+            'https://tadrebk.vercel.app',
+            'http://localhost:5173',
+            'http://localhost:3000',
+        ],
+        credentials: true,
+    }));
+    app.options('*', cors());
 
     app.use(express.json());
     app.use(helmet());
