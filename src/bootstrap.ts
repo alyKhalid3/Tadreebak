@@ -19,6 +19,19 @@ export const bootstrap = () => {
 
     app.set('trust proxy', 1);
 
+    // Handle preflight OPTIONS before anything else — including Helmet —
+    // so the browser never sees a CORS error on non-simple requests.
+    app.use((req: Request, res: Response, next: NextFunction) => {
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+        if (req.method === 'OPTIONS') {
+            return res.status(204).end();
+        }
+        next();
+    });
+
     app.use(cors({
         origin: [
             'https://tadrebk.vercel.app',
@@ -27,7 +40,6 @@ export const bootstrap = () => {
         ],
         credentials: true,
     }));
-    app.options('*', cors());
 
     app.use(express.json());
     app.use(helmet());
