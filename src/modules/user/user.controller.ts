@@ -97,6 +97,12 @@ router.get(userRoutes.getProfile, userService.getProfile)
  *                 enum: [male, female]
  *               address:
  *                 type: string
+ *               categories:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   enum: [frontend, backend, fullstack, mobile, uiux, devops, data_science, ai_ml, cybersecurity, qa_testing, marketing, sales, hr, finance, design, content_writing, project_management, other]
+ *                 maxItems: 4
  *               education:
  *                 type: array
  *                 items:

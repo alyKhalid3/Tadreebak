@@ -59,6 +59,33 @@ const authService = new AuthService()
  *                 type: string
  *               phone:
  *                 type: string
+ *               education:
+ *                 type: array
+ *                 minItems: 1
+ *                 description: Student's education history (required for signup)
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - institution
+ *                     - degree
+ *                     - field
+ *                     - grade
+ *                     - startDate
+ *                   properties:
+ *                     institution:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *                     grade:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date
+ *                     endDate:
+ *                       type: string
+ *                       format: date
  *     responses:
  *       200:
  *         description: User created successfully

@@ -22,7 +22,7 @@ export class AuthService {
     private userRepo: UserRepo = new UserRepo();
     signup = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { firstName, lastName, email, password, phone }: signupDTO = req.body
+            const { firstName, lastName, email, password, phone, education }: signupDTO = req.body
             const isEmailExist = await this.userRepo.findByEmail({ email: req.body.email })
             if (isEmailExist) {
                 throw new EmailIsExistException()
@@ -39,6 +39,7 @@ export class AuthService {
                     email,
                     password,
                     phoneNumber: phone,
+                    education: education as any,
                     emailOtp: {
                         otp,
                         expiresAt: new Date(Date.now() + 5 * 60 * 1000)

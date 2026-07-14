@@ -6,7 +6,15 @@ export const signupSchema = z.object({
     email: z.email(),
     password: z.string().min(8).max(20),
     confirmPassword: z.string().min(8).max(20),
-    phone: z.string()
+    phone: z.string(),
+    education: z.array(z.object({
+        institution: z.string().min(1),
+        degree: z.string().min(1),
+        field: z.string().min(1),
+        grade: z.string().min(1),
+        startDate: z.coerce.date(),
+        endDate: z.coerce.date().optional(),
+    })).min(1),
 }).refine(args => args.password === args.confirmPassword, {
     path: ['confirmPassword'],
     message: 'passwords do not match'
