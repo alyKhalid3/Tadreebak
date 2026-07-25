@@ -118,6 +118,11 @@ export class ApplicationService {
                 throw new NotFoundException("User not found")
             }
 
+            // Students must have education on their profile before they can apply.
+            if (!applicant.education || applicant.education.length === 0) {
+                throw new ApplicationError("Please add your education details to your profile before applying", 400)
+            }
+
             if (uploadedFile) {
                 const uploaded = await uploadSingleFile({
                     path: uploadedFile.path,

@@ -32,20 +32,21 @@ export class AuthService {
                 throw new ApplicationError("Phone number already in use", 400)
             }
             const otp = createOtp();
-            const user = await this.userRepo.create({
-                data: {
-                    firstName,
-                    lastName,
-                    email,
-                    password,
-                    phoneNumber: phone,
-                    education: education as any,
-                    emailOtp: {
-                        otp,
-                        expiresAt: new Date(Date.now() + 5 * 60 * 1000)
-                    }
+            const createData: Record<string, any> = {
+                firstName,
+                lastName,
+                email,
+                password,
+                phoneNumber: phone,
+                emailOtp: {
+                    otp,
+                    expiresAt: new Date(Date.now() + 5 * 60 * 1000)
                 }
-            })
+            }
+            if (education) {
+                createData.education = education as any
+            }
+            const user = await this.userRepo.create({ data: createData })
             const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider }) =>
                 ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider }))(user.toObject())
             return successHandler({ res, message: "User created successfully", data: { user: safeUser } })

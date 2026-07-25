@@ -14,7 +14,7 @@ export const signupSchema = z.object({
         grade: z.string().min(1),
         startDate: z.coerce.date(),
         endDate: z.coerce.date().optional(),
-    })).min(1),
+    })).optional(),
 }).refine(args => args.password === args.confirmPassword, {
     path: ['confirmPassword'],
     message: 'passwords do not match'

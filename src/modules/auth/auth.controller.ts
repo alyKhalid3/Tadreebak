@@ -61,8 +61,7 @@ const authService = new AuthService()
  *                 type: string
  *               education:
  *                 type: array
- *                 minItems: 1
- *                 description: Student's education history (required for signup)
+ *                 description: Student's education history (optional on signup, required before applying to internships)
  *                 items:
  *                   type: object
  *                   required:
