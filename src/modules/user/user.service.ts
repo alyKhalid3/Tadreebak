@@ -8,12 +8,58 @@ import { successHandler } from '../../utils/successHandler'
 
 import { CompanyRepo } from '../../DB/repos/company.repo';
 import { NotFoundException } from '../../utils/error';
+import { ApplicationModel } from '../../DB/models/application.model';
+import { ApplicationStatus } from '../../DB/types/application.type';
+import { RatingModel } from '../../DB/models/rating.model';
+import { RatingFrom } from '../../DB/types/rating.type';
+import { UserRoleEnum } from '../../DB/types/user.type';
 
 
 export class UserService {
     constructor() { }
     private userRepo = new UserRepo()
     private companyRepo = new CompanyRepo() // to avoid circular dependency between user and company repos as company repo needs user repo to update the company employees
+
+    private async buildStudentExperience(userId: string) {
+        const completedApplications = await ApplicationModel.find({
+            studentId: userId,
+            status: ApplicationStatus.ACCEPTED,
+            completed: true,
+        })
+            .populate({
+                path: 'internshipId',
+                select: 'title companyId',
+                populate: { path: 'companyId', select: 'name' },
+            })
+            .sort({ completedAt: -1, createdAt: -1 })
+
+        const applicationIds = completedApplications.map((application) => application._id)
+        const ratings = await RatingModel.find({
+            applicationId: { $in: applicationIds },
+            from: RatingFrom.COMPANY,
+        }).select('applicationId score comment createdAt')
+
+        const ratingByApplicationId = new Map(ratings.map((rating) => [rating.applicationId.toString(), rating]))
+
+        return completedApplications.map((application) => {
+            const internship = application.internshipId as any
+            const company = internship?.companyId as any
+            const companyRating = ratingByApplicationId.get(application._id.toString())
+
+            return {
+                applicationId: application._id,
+                internshipId: internship?._id,
+                internshipTitle: internship?.title,
+                companyId: company?._id,
+                companyName: company?.name,
+                completedAt: application.completedAt ,
+                rating: companyRating?.score ?? null,
+                feedback: companyRating?.comment ?? null,
+                feedbackCreatedAt: companyRating?.createdAt ?? null,
+            }
+        })
+    }
+
     uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { type } = req.params
@@ -79,7 +125,10 @@ export class UserService {
             if (!user) {
                 throw new NotFoundException('User not found')
             }
-            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, resume, dateOfBirth, gender, address, categories }) =>
+            const experience = user.role === UserRoleEnum.STUDENT
+                ? await this.buildStudentExperience(user._id.toString())
+                : user.experience
+            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, resume, dateOfBirth, gender, address, categories }) =>
                 ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, resume, dateOfBirth, gender, address, categories }))(user.toObject())
             return successHandler({ res, data: { user: safeUser } })
         } catch (error) {
@@ -95,6 +144,9 @@ export class UserService {
             }
             const { phone, ...updates } = req.body
             const data: any = { ...updates }
+            if ('experience' in data) {
+                throw new ApplicationError('Experience is read-only', 400)
+            }
             if (phone) {
                 data.phoneNumber = phone
             }

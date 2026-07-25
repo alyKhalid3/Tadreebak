@@ -20,11 +20,5 @@ export const updateProfileSchema = z.object({
         startDate: z.coerce.date(),
         endDate: z.coerce.date().optional()
     })).optional(),
-    experience: z.array(z.object({
-        company: z.string(),
-        title: z.string(),
-        description: z.string().optional(),
-        startDate: z.coerce.date(),
-        endDate: z.coerce.date().optional()
-    })).optional()
+    experience: z.never().optional(),
 })

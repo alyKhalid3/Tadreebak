@@ -59,11 +59,15 @@ const options = {
               items: {
                 type: 'object',
                 properties: {
-                  company: { type: 'string' },
-                  title: { type: 'string' },
-                  description: { type: 'string' },
-                  startDate: { type: 'string', format: 'date' },
-                  endDate: { type: 'string', format: 'date' }
+                  applicationId: { type: 'string' },
+                  internshipId: { type: 'string' },
+                  internshipTitle: { type: 'string' },
+                  companyId: { type: 'string' },
+                  companyName: { type: 'string' },
+                  completedAt: { type: 'string', format: 'date-time' },
+                  rating: { type: 'integer', nullable: true },
+                  feedback: { type: 'string', nullable: true },
+                  feedbackCreatedAt: { type: 'string', format: 'date-time', nullable: true },
                 }
               }
             },

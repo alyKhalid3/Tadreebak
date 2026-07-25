@@ -107,10 +107,7 @@ router.get(userRoutes.getProfile, userService.getProfile)
  *                 type: array
  *                 items:
  *                   type: object
- *               experience:
- *                 type: array
- *                 items:
- *                   type: object
+ *     description: The experience section is read-only and is derived from completed internships.
  *     responses:
  *       200:
  *         description: Profile updated successfully
