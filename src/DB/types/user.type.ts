@@ -83,4 +83,6 @@ export interface IUser {
     gender?: 'male' | 'female';
     address?: string;
     categories?: InterestCategory[];
+    avgRating?: number | null
+    ratingCount: number
 }

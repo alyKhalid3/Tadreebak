@@ -23,4 +23,6 @@ export interface ICompany {
     legalAttachment:fileAttributtes
     approvedByAdmin: boolean
     internshipCredits: number
+    avgRating?: number | null
+    ratingCount: number
 }

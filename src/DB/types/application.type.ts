@@ -21,4 +21,5 @@ export interface IApplication {
     reviewedBy?: Types.ObjectId;
     answers?: IAnswer[];
     completed: boolean;
+    completedAt?: Date;
 }

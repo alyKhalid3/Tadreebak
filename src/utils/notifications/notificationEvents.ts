@@ -1,10 +1,14 @@
 import EventEmitter from "node:events";
 import { NotificationType } from "../../DB/types/notification.type";
+import { RatingTarget } from "../../DB/types/rating.type";
 
-// Payload every trigger must provide. `recipient` is the user the notification
-// is for; `data` is optional context for client deep-linking/messaging.
+// Payload every trigger may provide. Most events pass `recipient` directly;
+// rating events pass `targetType` and `targetId` so the bus can resolve the
+// actual user recipient without coupling the service to notification routing.
 export interface NotificationPayload {
-    recipient: string
+    recipient?: string
+    targetType?: RatingTarget
+    targetId?: string
     data?: Record<string, any>
 }
 

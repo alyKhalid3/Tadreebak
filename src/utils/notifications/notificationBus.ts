@@ -2,6 +2,8 @@ import { notificationEmitter } from "./notificationEvents";
 import { NotificationRepo } from "../../DB/repos/notification.repo";
 import { NotificationType, INotification } from "../../DB/types/notification.type";
 import mongoose from "mongoose";
+import { RatingTarget } from "../../DB/types/rating.type";
+import { companyModel } from "../../DB/models/company.model";
 
 // Single repo instance reused by all subscribers.
 const repo = new NotificationRepo()
@@ -48,14 +50,27 @@ const buildContent = (
                 title: 'Company reinstated',
                 message: `${companyName} is no longer banned.`,
             }
+        case NotificationType.RATING_RECEIVED:
+            return {
+                title: 'New Rating Received',
+                message: 'You received a new rating for your recent internship activity.',
+            }
     }
 }
 
 // Persist a notification. Wrapped so a DB failure never rejects the publisher
 // (services publish synchronously and don't await the bus).
-const handle = async (type: NotificationType, { recipient, data }: { recipient: string, data?: Record<string, any> }) => {
+const handle = async (
+    type: NotificationType,
+    payload: { recipient?: string, targetType?: RatingTarget, targetId?: string, data?: Record<string, any> },
+) => {
     try {
-        const { title, message } = buildContent(type, data)
+        const recipient = payload.recipient ?? await resolveRecipient(payload.targetType, payload.targetId)
+        if (!recipient) {
+            console.warn(`Skipping notification ${type}: recipient could not be resolved`)
+            return
+        }
+        const { title, message } = buildContent(type, payload.data)
         const doc: Partial<INotification> = {
             recipient: new mongoose.Types.ObjectId(recipient),
             type,
@@ -65,15 +80,33 @@ const handle = async (type: NotificationType, { recipient, data }: { recipient: 
         }
         // Only attach `data` when present — INotification.data is optional and
         // exactOptionalPropertyTypes forbids assigning `undefined` to it.
-        if (data) {
-            doc.data = data
+        if (payload.data) {
+            doc.data = payload.data
         }
         await repo.create({
             data: doc,
         })
     } catch (err) {
-        console.error(`Failed to persist notification (${type}) for ${recipient}:`, err)
+        console.error(`Failed to persist notification (${type}):`, err)
     }
+}
+
+const resolveRecipient = async (targetType?: RatingTarget, targetId?: string): Promise<string | undefined> => {
+    if (!targetType || !targetId) {
+        return undefined
+    }
+
+    if (targetType === RatingTarget.STUDENT) {
+        return targetId
+    }
+
+    const company = await companyModel.findById(targetId).select("createdBy")
+    if (!company) {
+        console.warn(`Skipping notification resolution for missing company ${targetId}`)
+        return undefined
+    }
+
+    return company.createdBy?.toString()
 }
 
 // Subscribe to every notification type. Importing this module is enough to

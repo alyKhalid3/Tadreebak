@@ -27,3 +27,8 @@ export const listMyApplicationsQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
 })
+
+export const rateApplicationSchema = z.object({
+    score: z.number().int().min(1).max(5),
+    comment: z.string().max(1000).optional(),
+})

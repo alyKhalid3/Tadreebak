@@ -36,7 +36,9 @@ export const companySchema = new mongoose.Schema<ICompany>({
         }, required: true
     },
     approvedByAdmin: { type: Boolean, default: false },
-    internshipCredits: { type: Number, default: 1, min: 0 }
+    internshipCredits: { type: Number, default: 1, min: 0 },
+    avgRating: { type: Number, default: null },
+    ratingCount: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export const companyModel = mongoose.model<ICompany>('Company', companySchema);

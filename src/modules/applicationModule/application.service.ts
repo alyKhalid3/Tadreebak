@@ -16,6 +16,10 @@ import { NotificationType } from "../../DB/types/notification.type";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { acceptanceTemplate } from "../../utils/sendEmail/generateHtml";
 import { CompanyRepo } from "../../DB/repos/company.repo";
+import { RatingModel } from "../../DB/models/rating.model";
+import { RatingFrom, RatingTarget } from "../../DB/types/rating.type";
+import { companyModel } from "../../DB/models/company.model";
+import { UserModel } from "../../DB/models/user.model";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
@@ -467,11 +471,185 @@ export class ApplicationService {
 
             const updated = await this.applicationRepo.update({
                 filter: { _id: new mongoose.Types.ObjectId(applicationId as string) },
-                data: { completed: true },
+                data: { completed: true, completedAt: new Date() },
                 options: { returnDocument: "after" },
             })
 
             return successHandler({ res, message: "Application marked as completed", data: { application: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    rate = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { applicationId } = req.params
+            const { score, comment } = req.body as { score: number, comment?: string }
+            const user = res.locals.user
+
+            if (!isObjectIdOrHexString(applicationId)) {
+                throw new ApplicationError("Invalid application id", 400)
+            }
+
+            const application = await ApplicationModel.findById(applicationId as string).populate<{ internshipId: IInternShip & { _id: any } }>('internshipId')
+            if (!application) {
+                throw new NotFoundException("Application not found")
+            }
+            const internship = application.internshipId as any
+            if (!internship) {
+                throw new NotFoundException("Internship not found")
+            }
+
+            if (application.status !== ApplicationStatus.ACCEPTED || !application.completed) {
+                throw new ApplicationError("Application must be completed before rating", 400)
+            }
+
+            let from: RatingFrom
+            let targetType: RatingTarget
+            let targetId: mongoose.Types.ObjectId
+
+            if (user._id.toString() === application.studentId.toString()) {
+                from = RatingFrom.STUDENT
+                targetType = RatingTarget.COMPANY
+                targetId = internship.companyId
+            } else if (user._id.toString() === internship.addedBy.toString()) {
+                from = RatingFrom.COMPANY
+                targetType = RatingTarget.STUDENT
+                targetId = application.studentId
+            } else {
+                throw new ApplicationError("Not authorized to rate this application", 403)
+            }
+
+            const existing = await RatingModel.findOne({ applicationId: application._id, from })
+            if (existing) {
+                throw new ApplicationError("You have already rated this application", 409)
+            }
+
+            const session = await mongoose.startSession()
+            try {
+                session.startTransaction()
+
+                const ratingDoc: Record<string, any> = {
+                    applicationId: application._id,
+                    from,
+                    raterId: user._id,
+                    targetType,
+                    targetId,
+                    score,
+                }
+                if (comment) {
+                    ratingDoc.comment = comment
+                }
+                const rating = await new RatingModel(ratingDoc).save({ session })
+
+                if (targetType === RatingTarget.COMPANY) {
+                    const company = await companyModel.findById(targetId).session(session)
+                    if (company) {
+                        const oldAvg = company.avgRating ?? 0
+                        const count = company.ratingCount ?? 0
+                        const newAvg = (oldAvg * count + score) / (count + 1)
+                        await companyModel.findByIdAndUpdate(targetId, {
+                            $set: { avgRating: newAvg },
+                            $inc: { ratingCount: 1 },
+                        }, { session })
+                    }
+                } else {
+                    const targetUser = await UserModel.findById(targetId).session(session)
+                    if (targetUser) {
+                        const oldAvg = targetUser.avgRating ?? 0
+                        const count = targetUser.ratingCount ?? 0
+                        const newAvg = (oldAvg * count + score) / (count + 1)
+                        await UserModel.findByIdAndUpdate(targetId, {
+                            $set: { avgRating: newAvg },
+                            $inc: { ratingCount: 1 },
+                        }, { session })
+                    }
+                }
+
+                await session.commitTransaction()
+
+                notificationEmitter.publish(NotificationType.RATING_RECEIVED, {
+                    targetType,
+                    targetId: targetId.toString(),
+                    data: { applicationId: applicationId as string, from: from.toString() },
+                })
+
+                return successHandler({ res, message: "Rating submitted successfully", data: { rating }, status: 201 })
+            } catch (err: any) {
+                if (err && err.code === 11000) {
+                    throw new ApplicationError("You have already rated this application", 409)
+                }
+                try {
+                    if (session.inTransaction()) {
+                        await session.abortTransaction()
+                    }
+                } catch (abortError) {
+                    console.error("Failed to abort rating transaction:", abortError)
+                }
+                throw err
+            } finally {
+                session.endSession()
+            }
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    getRatings = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { applicationId } = req.params
+            const user = res.locals.user
+
+            if (!isObjectIdOrHexString(applicationId)) {
+                throw new ApplicationError("Invalid application id", 400)
+            }
+
+            const application = await ApplicationModel.findById(applicationId as string).populate<{ internshipId: IInternShip & { _id: any } }>('internshipId')
+            if (!application) {
+                throw new NotFoundException("Application not found")
+            }
+            const internship = application.internshipId as any
+            if (!internship) {
+                throw new NotFoundException("Internship not found")
+            }
+
+            const isStudent = user._id.toString() === application.studentId.toString()
+            const isCompanyOwner = user._id.toString() === internship.addedBy.toString()
+            if (!isStudent && !isCompanyOwner) {
+                throw new ApplicationError("Not authorized to view ratings for this application", 403)
+            }
+
+            const [studentRating, companyRating] = await Promise.all([
+                RatingModel.findOne({ applicationId: application._id, from: RatingFrom.STUDENT }),
+                RatingModel.findOne({ applicationId: application._id, from: RatingFrom.COMPANY }),
+            ])
+
+            const bothSubmitted = !!studentRating && !!companyRating
+            const revealTimeoutPassed = application.completedAt
+                ? (Date.now() - new Date(application.completedAt).getTime()) >= 14 * 24 * 60 * 60 * 1000
+                : false
+            const visible = bothSubmitted || revealTimeoutPassed
+
+            const studentRatingDTO = studentRating
+                ? visible
+                    ? { score: studentRating.score, comment: studentRating.comment, createdAt: studentRating.createdAt }
+                    : { submitted: true }
+                : null
+
+            const companyRatingDTO = companyRating
+                ? visible
+                    ? { score: companyRating.score, comment: companyRating.comment, createdAt: companyRating.createdAt }
+                    : { submitted: true }
+                : null
+
+            return successHandler({
+                res,
+                data: {
+                    studentRating: studentRatingDTO,
+                    companyRating: companyRatingDTO,
+                    bothSubmitted,
+                },
+            })
         } catch (error) {
             next(error)
         }
