@@ -36,10 +36,15 @@ export const INTEREST_CATEGORIES = [
     'other',
 ] as const
 
-export type InterestCategory = typeof INTEREST_CATEGORIES[number]
+export type InterestCategory = string
 export type fileAttributtes = {
     public_id: string;
     secure_url: string;
+    resourceType?: 'image' | 'raw';
+}
+export interface ICourse {
+    name: string;
+    certificate?: fileAttributtes;
 }
 export interface IEducation {
     institution: string;
@@ -78,6 +83,7 @@ export interface IUser {
     skills?: string[];
     education?: IEducation[];
     experience?: IExperience[];
+    courses?: ICourse[];
     resume?: fileAttributtes;
     dateOfBirth?: Date;
     gender?: 'male' | 'female';

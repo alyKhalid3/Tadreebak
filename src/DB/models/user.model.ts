@@ -1,6 +1,6 @@
 
 import mongoose, { HydratedDocument, Schema } from "mongoose";
-import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes, IEducation, IExperience, INTEREST_CATEGORIES } from "../types/user.type";
+import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes, IEducation, IExperience } from "../types/user.type";
 import { template } from "../../utils/sendEmail/generateHtml";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { createHash } from "../../utils/hash";
@@ -42,7 +42,15 @@ const userSchema = new mongoose.Schema<IUser>({
     bio: { type: String, maxlength: 500 },
     headline: { type: String, maxlength: 100 },
     skills: [{ type: String }],
-    categories: [{ type: String, enum: INTEREST_CATEGORIES }],
+    categories: [{ type: String }],
+    courses: [{
+        name: { type: String, required: true },
+        certificate: {
+            public_id: { type: String },
+            secure_url: { type: String },
+            resourceType: { type: String, enum: ['image', 'raw'] },
+        },
+    }],
     education: [{
         institution: { type: String, required: true },
         degree: { type: String, required: true },

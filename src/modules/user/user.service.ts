@@ -115,6 +115,53 @@ export class UserService {
             next(error)
         }
     }
+    uploadCourseCertificate = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const { courseIndex } = req.params
+            const file = req.file as Express.Multer.File
+            if (typeof courseIndex !== 'string') {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+            const index = Number.parseInt(courseIndex, 10)
+            if (!Number.isInteger(index) || index < 0) {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+            if (!file) {
+                throw new ApplicationError('Certificate file is required', 400)
+            }
+
+            const currentUser = await this.userRepo.findById({ id: user._id.toString() })
+            const course = currentUser?.courses?.[index]
+            if (!course) {
+                throw new NotFoundException('Course not found')
+            }
+
+            const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'image'
+            const { public_id, secure_url } = await uploadSingleFile({
+                path: file.path,
+                folder: `/users/${user.firstName}_${user._id}/courses/${index}/certificate`,
+                resourceType,
+            })
+
+            if (course.certificate?.public_id) {
+                await destroySingleFile(course.certificate.public_id, course.certificate.resourceType ?? resourceType)
+            }
+
+            await this.userRepo.update({
+                filter: { _id: user._id },
+                data: { [`courses.${index}.certificate`]: { public_id, secure_url, resourceType } } as any,
+            })
+
+            return successHandler({
+                res,
+                message: 'Course certificate uploaded successfully',
+                data: { certificate: { public_id, secure_url, resourceType } },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
     getProfile = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { userId } = req.params
@@ -128,8 +175,8 @@ export class UserService {
             const experience = user.role === UserRoleEnum.STUDENT
                 ? await this.buildStudentExperience(user._id.toString())
                 : user.experience
-            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, resume, dateOfBirth, gender, address, categories }) =>
-                ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, resume, dateOfBirth, gender, address, categories }))(user.toObject())
+            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, courses, resume, dateOfBirth, gender, address, categories }) =>
+                ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, courses, resume, dateOfBirth, gender, address, categories }))(user.toObject())
             return successHandler({ res, data: { user: safeUser } })
         } catch (error) {
             next(error)

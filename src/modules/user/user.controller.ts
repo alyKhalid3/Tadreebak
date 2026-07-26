@@ -17,6 +17,7 @@ export const userRoutes = {
     uploadProfilePicture: '/upload/profilePicture',
     uploadCoverPicture: '/upload/coverPicture',
     uploadResume: '/upload/resume',
+    uploadCourseCertificate: '/upload/course-certificate/:courseIndex',
     myApplications: '/:userId/applications',
     getProfile: '/:userId',
     update: '/:userId',
@@ -101,8 +102,17 @@ router.get(userRoutes.getProfile, userService.getProfile)
  *                 type: array
  *                 items:
  *                   type: string
- *                   enum: [frontend, backend, fullstack, mobile, uiux, devops, data_science, ai_ml, cybersecurity, qa_testing, marketing, sales, hr, finance, design, content_writing, project_management, other]
+ *                 description: Predefined categories or custom text entered after selecting Other.
  *                 maxItems: 4
+ *               courses:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                   description: Student courses. Upload certificates separately with the course certificate endpoint.
+ *                 maxItems: 20
  *               education:
  *                 type: array
  *                 items:
@@ -210,6 +220,47 @@ router.post(
  *         description: Unauthorized
  */
 router.post(userRoutes.uploadResume, auth(), uploadFile({ fileType: fileTypes.pdf, storeIn: StoreIn.DISK }).single('file'), userService.uploadResume)
+
+/**
+ * @swagger
+ * /user/upload/course-certificate/{courseIndex}:
+ *   post:
+ *     summary: Upload a certificate for a student course
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseIndex
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Certificate file. Images and PDFs are supported.
+ *     responses:
+ *       200:
+ *         description: Course certificate uploaded successfully
+ *       400:
+ *         description: Invalid course index / file is required / unsupported file type
+ *       404:
+ *         description: User or course not found
+ */
+router.post(
+    userRoutes.uploadCourseCertificate,
+    auth(),
+    uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
+    userService.uploadCourseCertificate
+)
 
 /**
  * @swagger
