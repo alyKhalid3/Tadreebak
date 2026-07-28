@@ -7,6 +7,10 @@ import { InternShipModel } from "../../DB/models/internship.model";
 import { companyModel } from "../../DB/models/company.model";
 import { assertOwnedCompany } from "../../utils/companyAccess";
 import { ApplicationRepo } from "../../DB/repos/application.repo";
+import { UserRepo } from "../../DB/repos/user.repo";
+import { UserRoleEnum } from "../../DB/types/user.type";
+import { emailEmitter } from "../../utils/sendEmail/emailEvents";
+import { internshipNotificationTemplate } from "../../utils/sendEmail/generateHtml";
 
 export class InternService {
     private internRepo = new InternRepo
@@ -15,7 +19,7 @@ export class InternService {
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const companyId = req.params.companyId as string
-            const { title, description, location, workingTime, softSkills, technicalSkills, questions, preKnowledge } = req.body as Record<string, any>
+            const { title, description, location, workingTime, softSkills, technicalSkills, questions, preKnowledge, track, requiredEducation } = req.body as Record<string, any>
             const user = res.locals.user
 
             const company = await assertOwnedCompany(companyId, user._id.toString())
@@ -37,6 +41,8 @@ export class InternService {
                     technicalSkills: technicalSkills as string[],
                     questions,
                     preKnowledge,
+                    track,
+                    requiredEducation,
                     companyId: new mongoose.Types.ObjectId(companyId),
                     addedBy: user._id,
                     updatedBy: user._id,
@@ -47,6 +53,46 @@ export class InternService {
                 { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
                 { $inc: { internshipCredits: -1 } },
             )
+
+            // Notify matching students in background: those who selected the internship `track`
+            void (async () => {
+                try {
+                    const userRepo = new UserRepo()
+                    const institutions: string[] = Array.isArray(requiredEducation) ? requiredEducation.map((e: any) => e?.institution).filter(Boolean) : []
+                    const trackStr = typeof track === 'string' && track.trim() ? track.trim() : undefined
+
+                    if (!trackStr && institutions.length === 0) return
+
+                    const filter: Record<string, any> = { role: UserRoleEnum.STUDENT }
+                    if (trackStr) filter.categories = trackStr
+                    if (institutions.length) filter['education.institution'] = { $in: institutions }
+
+                    const students = await userRepo.find({ filter, projection: 'firstName lastName email _id', options: { lean: true } })
+                    const seen = new Set<string>()
+                    for (const s of students) {
+                        if (!s || !s.email) continue
+                        // Skip notifying the company owner who created this internship
+                        if (s._id && s._id.toString() === user._id.toString()) continue
+                        if (seen.has(s.email)) continue
+                        seen.add(s.email)
+
+                        const subject = `New internship matching your interests: ${title}`
+                        const html = internshipNotificationTemplate({
+                            studentName: s.firstName ?? `${s.email}`,
+                            internshipTitle: title,
+                            companyName: company.name ?? '',
+                            track: trackStr,
+                            location,
+                            link: `${process.env.APP_URL ?? ''}/internships/${(internship as any)._id}`,
+                            subject,
+                        })
+
+                        emailEmitter.publish('send-email-new-internship', { to: s.email, subject, html })
+                    }
+                } catch (err) {
+                    console.error('Failed to notify matching students about new internship:', err)
+                }
+            })()
 
             return successHandler({ res, message: "Internship created successfully", data: { internship }, status: 201 })
         } catch (error) {

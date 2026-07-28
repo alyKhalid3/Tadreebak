@@ -14,6 +14,15 @@ const writingQuestionSchema = z.object({
 
 export const questionSchema = z.discriminatedUnion('type', [mcqQuestionSchema, writingQuestionSchema])
 
+const educationSchema = z.object({
+    institution: z.string().min(1).optional(),
+    degree: z.string().min(1).optional(),
+    field: z.string().min(1).optional(),
+    grade: z.string().min(1).optional(),
+    startDate: z.string().optional().transform(s => s ? new Date(s) : undefined),
+    endDate: z.string().optional().transform(s => s ? new Date(s) : undefined),
+})
+
 export const createInternSchema = z.object({
     title: z.string().min(3).max(100),
     description: z.string().min(10),
@@ -21,6 +30,8 @@ export const createInternSchema = z.object({
     workingTime: z.enum(WorkingTimeEnum),
     softSkills: z.array(z.string()).min(1),
     technicalSkills: z.array(z.string()).min(1),
+    track: z.string().optional(),
+    requiredEducation: z.array(educationSchema).optional(),
     questions: z.array(questionSchema).optional(),
     preKnowledge: z.array(z.string()).optional(),
 })

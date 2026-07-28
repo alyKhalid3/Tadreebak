@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { IQuestion } from "./question.type";
+import { IEducation } from "./user.type";
 
 
 
@@ -26,4 +27,6 @@ export interface IInternShip {
     companyId: Types.ObjectId;
     questions?: IQuestion[];
     preKnowledge?: string[];
+    track?: string;
+    requiredEducation?: IEducation[];
 }

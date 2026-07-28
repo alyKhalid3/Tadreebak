@@ -215,6 +215,28 @@ const companyRouter = Router({ mergeParams: true })
  *                 items:
  *                   type: string
  *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email.
+ *               track:
+ *                 type: string
+ *                 description: Optional internship track (free-form string received from frontend)
+ *               requiredEducation:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     institution:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *                     grade:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date-time
+ *                     endDate:
+ *                       type: string
+ *                       format: date-time
  *     responses:
  *       201:
  *         description: Internship created successfully
@@ -320,6 +342,28 @@ companyRouter.post('/', auth(), validation(InternValidation.createInternSchema),
  *                 items:
  *                   type: string
  *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email. Replaces the full array.
+ *               track:
+ *                 type: string
+ *                 description: Optional internship track (free-form string received from frontend)
+ *               requiredEducation:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     institution:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *                     grade:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date-time
+ *                     endDate:
+ *                       type: string
+ *                       format: date-time
  *     responses:
  *       200:
  *         description: Internship updated successfully

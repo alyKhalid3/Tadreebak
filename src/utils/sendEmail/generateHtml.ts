@@ -181,3 +181,36 @@ export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, 
   </div>
 </body>
 </html>`;
+
+export const internshipNotificationTemplate = ({ studentName, internshipTitle, companyName, track, location, link, subject }:{ studentName:string, internshipTitle:string, companyName:string, track?: string | undefined, location?: string | undefined, link?: string | undefined, subject?: string | undefined }) => `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; }
+    .email-container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+    .email-header { background: linear-gradient(90deg, #34c759, #28a745); color: #ffffff; text-align: center; padding: 20px; }
+    .email-body { padding: 25px; color: #333333; line-height: 1.6; }
+    .cta { display:inline-block; background:#28a745; color:#fff; padding:10px 18px; border-radius:6px; text-decoration:none; }
+    .meta { background:#e9f9ee; padding:12px; border-radius:8px; margin:12px 0; }
+    .email-footer { text-align:center; padding:15px; background-color:#f4f7f6; font-size:13px; color:#888; }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header"><h1>Tadreebak</h1></div>
+    <div class="email-body">
+      <h2>Hello ${studentName},</h2>
+      <p>We thought you'd be interested in a new internship that matches your selected track${track ? `: <strong>${track}</strong>` : ''}.</p>
+      <p><strong>${internshipTitle}</strong> at <strong>${companyName}</strong></p>
+      ${location ? `<p>Location: ${location}</p>` : ''}
+      ${track || location ? `<div class="meta">${track ? `Track: ${track}` : ''}${track && location ? ' · ' : ''}${location ? `Location: ${location}` : ''}</div>` : ''}
+      ${link ? `<p><a class="cta" href="${link}">View internship</a></p>` : ''}
+      <p>If this isn't relevant, you can ignore this email.</p>
+      <p>Best regards,<br/>Tadreebak Team</p>
+    </div>
+    <div class="email-footer">
+      <p>&copy; 2026 Tadreebak. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
