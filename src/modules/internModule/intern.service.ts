@@ -77,13 +77,15 @@ export class InternService {
                         seen.add(s.email)
 
                         const subject = `New internship matching your interests: ${title}`
+                        const baseUrl = (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim()) ? process.env.FRONTEND_URL : (process.env.APP_URL && process.env.APP_URL.trim()) ? process.env.APP_URL : `${req.protocol}://${req.get('host')}`
+                        const internshipId = (internship as any)._id ? (internship as any)._id.toString() : undefined
                         const html = internshipNotificationTemplate({
                             studentName: s.firstName ?? `${s.email}`,
                             internshipTitle: title,
                             companyName: company.name ?? '',
                             track: trackStr,
                             location,
-                            link: `${process.env.APP_URL ?? ''}/internships/${(internship as any)._id}`,
+                            link: internshipId ? `${baseUrl.replace(/\/$/, '')}/internships/${internshipId}` : undefined,
                             subject,
                         })
 
