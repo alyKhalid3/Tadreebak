@@ -11,6 +11,8 @@ import { UserRepo } from "../../DB/repos/user.repo";
 import { UserRoleEnum } from "../../DB/types/user.type";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { internshipNotificationTemplate } from "../../utils/sendEmail/generateHtml";
+import { notificationEmitter } from "../../utils/notifications/notificationEvents";
+import { NotificationType } from "../../DB/types/notification.type";
 
 export class InternService {
     private internRepo = new InternRepo
@@ -90,6 +92,17 @@ export class InternService {
                         })
 
                         emailEmitter.publish('send-email-new-internship', { to: s.email, subject, html })
+
+                        notificationEmitter.publish(NotificationType.INTERN_MATCH_POSTED, {
+                            recipient: s._id?.toString(),
+                            data: {
+                                internshipId: internshipId,
+                                internshipTitle: title,
+                                companyName: company.name,
+                                track: trackStr,
+                                location,
+                            },
+                        })
                     }
                 } catch (err) {
                     console.error('Failed to notify matching students about new internship:', err)

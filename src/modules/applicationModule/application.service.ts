@@ -66,7 +66,7 @@ export class ApplicationService {
             const internId = req.params.internId as string
             const { coverLetter, answers: rawAnswers } = req.body as { coverLetter?: string, answers?: any[] }
             const user = res.locals.user
-            
+
             const internship = await this.getInternshipForApply(internId, companyId)
             // The company owner cannot apply to their own internship.
             if (internship.addedBy.toString() === user._id.toString()) {

@@ -55,6 +55,11 @@ const buildContent = (
                 title: 'New Rating Received',
                 message: 'You received a new rating for your recent internship activity.',
             }
+        case NotificationType.INTERN_MATCH_POSTED:
+            return {
+                title: 'New internship match',
+                message: `${data.companyName ? `${data.companyName} posted ` : 'A new '}internship${data.track ? ` for ${data.track}` : ''}${data.internshipTitle ? `: ${data.internshipTitle}` : ''}.`,
+            }
     }
 }
 

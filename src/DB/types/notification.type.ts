@@ -11,6 +11,7 @@ export enum NotificationType {
     COMPANY_BANNED = 'company_banned',
     COMPANY_UNBANNED = 'company_unbanned',
     RATING_RECEIVED = 'rating_received',
+    INTERN_MATCH_POSTED = 'intern_match_posted',
 }
 
 export interface INotification {
