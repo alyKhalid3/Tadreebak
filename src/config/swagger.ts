@@ -98,6 +98,19 @@ const options = {
             description: { type: 'string', example: 'A leading tech company' },
             industry: { type: 'string', example: 'Technology' },
             address: { type: 'string', example: '123 Main St' },
+            location: {
+              type: 'object',
+              description: 'Optional coordinates. Returned when the company set a map location.',
+              properties: {
+                lat: { type: 'number', example: 30.0444 },
+                lng: { type: 'number', example: 31.2357 },
+              },
+            },
+            googleMapsUrl: {
+              type: 'string',
+              description: 'Google Maps link built from location, present only when lat/lng exist.',
+              example: 'https://www.google.com/maps/search/?api=1&query=30.0444,31.2357',
+            },
             numberOfEmployees: { type: 'string', example: '500' },
             companyEmail: { type: 'string', format: 'email', example: 'info@techcorp.com' },
             createdBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },

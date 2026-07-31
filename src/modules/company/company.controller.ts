@@ -130,6 +130,9 @@ router.get(
  *                 type: string
  *               address:
  *                 type: string
+ *               location:
+ *                 type: string
+ *                 description: Optional coordinates as a JSON string, e.g. {"lat":30.0444,"lng":31.2357}
  *               numberOfEmployees:
  *                 type: string
  *               companyEmail:
@@ -179,6 +182,18 @@ router.post(
  *                 type: string
  *               address:
  *                 type: string
+ *               location:
+ *                 type: object
+ *                 description: Optional coordinates
+ *                 properties:
+ *                   lat:
+ *                     type: number
+ *                     minimum: -90
+ *                     maximum: 90
+ *                   lng:
+ *                     type: number
+ *                     minimum: -180
+ *                     maximum: 180
  *               numberOfEmployees:
  *                 type: string
  *               companyEmail:
