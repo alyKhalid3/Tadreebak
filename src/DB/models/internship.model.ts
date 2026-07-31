@@ -23,7 +23,7 @@ export const internshipSchema = new mongoose.Schema<IInternShip>({
     closed: { type: Boolean, default: false },
     questions: { type: [questionSchema], default: [] },
     preKnowledge: { type: [String], default: [] },
-    track: { type: String },
+    track: { type: [String], required: true },
     requiredEducation: { type: [{ institution: String, degree: String, field: String, grade: String, startDate: Date, endDate: Date }], default: [] },
     // ObjectId (not String) so populate("companyId") resolves the Company ref
     companyId: { type: Types.ObjectId, required: true, ref: 'Company' }

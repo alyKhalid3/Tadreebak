@@ -155,6 +155,7 @@ const companyRouter = Router({ mergeParams: true })
  *               - workingTime
  *               - softSkills
  *               - technicalSkills
+ *               - track
  *             properties:
  *               title:
  *                 type: string
@@ -216,8 +217,11 @@ const companyRouter = Router({ mergeParams: true })
  *                   type: string
  *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email.
  *               track:
- *                 type: string
- *                 description: Optional internship track (free-form string received from frontend)
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 minItems: 1
+ *                 description: Required internship tracks used to match and notify interested students.
  *               requiredEducation:
  *                 type: array
  *                 items:
@@ -343,8 +347,11 @@ companyRouter.post('/', auth(), validation(InternValidation.createInternSchema),
  *                   type: string
  *                 description: Optional list of pre-knowledge topics sent to the student in the acceptance email. Replaces the full array.
  *               track:
- *                 type: string
- *                 description: Optional internship track (free-form string received from frontend)
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 minItems: 1
+ *                 description: Required internship tracks used to match and notify interested students.
  *               requiredEducation:
  *                 type: array
  *                 items:

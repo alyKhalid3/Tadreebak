@@ -50,7 +50,12 @@ export const bootstrap = () => {
     connectDB();
     app.get('/test', (req, res) => res.json({ ok: true }));
     app.use('/api/v1', baseRouter)
-    app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    app.use('/api/v1/docs', (req: Request, res: Response, next: NextFunction) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        next();
+    }, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
     app.use((req: Request, res: Response) => {
         return res.status(404).json({ errMsg: 'Route not found', cause: 404 })

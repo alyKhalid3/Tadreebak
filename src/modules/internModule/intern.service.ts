@@ -61,12 +61,13 @@ export class InternService {
                 try {
                     const userRepo = new UserRepo()
                     const institutions: string[] = Array.isArray(requiredEducation) ? requiredEducation.map((e: any) => e?.institution).filter(Boolean) : []
-                    const trackStr = typeof track === 'string' && track.trim() ? track.trim() : undefined
+                    const trackArr = Array.isArray(track) && track.length > 0 ? track : undefined
+                    const trackStr = trackArr ? trackArr.join(', ') : undefined
 
-                    if (!trackStr && institutions.length === 0) return
+                    if (!trackArr && institutions.length === 0) return
 
                     const filter: Record<string, any> = { role: UserRoleEnum.STUDENT }
-                    if (trackStr) filter.categories = trackStr
+                    if (trackArr) filter.categories = { $in: trackArr }
                     if (institutions.length) filter['education.institution'] = { $in: institutions }
 
                     const students = await userRepo.find({ filter, projection: 'firstName lastName email _id', options: { lean: true } })
@@ -97,6 +98,7 @@ export class InternService {
                             recipient: s._id?.toString(),
                             data: {
                                 internshipId: internshipId,
+                                link: internshipId ? `${baseUrl.replace(/\/$/, '')}/internships/${internshipId}` : undefined,
                                 internshipTitle: title,
                                 companyName: company.name,
                                 track: trackStr,

@@ -27,6 +27,6 @@ export interface IInternShip {
     companyId: Types.ObjectId;
     questions?: IQuestion[];
     preKnowledge?: string[];
-    track?: string;
+    track: string[];
     requiredEducation?: IEducation[];
 }

@@ -30,7 +30,7 @@ export const createInternSchema = z.object({
     workingTime: z.enum(WorkingTimeEnum),
     softSkills: z.array(z.string()).min(1),
     technicalSkills: z.array(z.string()).min(1),
-    track: z.string().optional(),
+    track: z.array(z.string().trim().min(1)).min(1),
     requiredEducation: z.array(educationSchema).optional(),
     questions: z.array(questionSchema).optional(),
     preKnowledge: z.array(z.string()).optional(),
