@@ -142,13 +142,12 @@ const options = {
       },
     },
   },
-  // Support both local (ts) and production (compiled js) runtimes.
-  // Use absolute paths so swagger-jsdoc doesn't depend on process working directory.
+  // The app runs directly from TypeScript source via tsx (no compiled dist output),
+  // so only scan src paths. Remove any dist globs to avoid merging stale
+  // route annotations from old builds on the production server.
   apis: [
     path.join(projectRoot, 'src/modules/**/*.ts'),
     path.join(projectRoot, 'src/routes.ts'),
-    path.join(projectRoot, 'dist/modules/**/*.js'),
-    path.join(projectRoot, 'dist/routes.js'),
   ],
 };
 
