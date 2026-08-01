@@ -1,0 +1,3 @@
+◇ injected env (21) from src\config\.env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Connected to MongoDB
+Server is running on port 3982

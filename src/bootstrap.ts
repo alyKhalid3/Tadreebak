@@ -133,7 +133,26 @@ export const bootstrap = async () => {
         process.exit(1);
     }
 
-    app.get('/test', (req, res) => res.json({ ok: true }));
+    /**
+     * @swagger
+     * /health:
+     *   get:
+     *     summary: Liveness probe
+     *     description: |
+     *       Public health check. Use this for uptime monitoring and load-balancer
+     *       probes. Returns the process uptime in seconds.
+     *     tags: [System]
+     *     responses:
+     *       200:
+     *         description: Service is up
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 ok: { type: boolean, example: true }
+     *                 uptime: { type: number, description: "Process uptime in seconds" }
+     */
     app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
     app.use('/api/v1', baseRouter)
 

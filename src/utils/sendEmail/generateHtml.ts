@@ -188,7 +188,13 @@ export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, 
 </body>
 </html>`;
 
-export const internshipNotificationTemplate = ({ studentName, internshipTitle, companyName, track, location, link, subject }: { studentName: string; internshipTitle: string; companyName: string; track?: string; location?: string; link?: string; subject?: string }) => `<!DOCTYPE html>
+export const internshipNotificationTemplate = ({ studentName, internshipTitle, universityName, companyName, track, location, link, subject }: { studentName: string; internshipTitle: string; universityName?: string; companyName?: string; track?: string; location?: string; link?: string; subject?: string }) => {
+  const spotlightName = universityName?.trim() || companyName?.trim();
+  const detailLine = spotlightName
+    ? `<p><strong>${escapeHtml(internshipTitle)}</strong> at <strong>${escapeHtml(spotlightName)}</strong></p>`
+    : `<p><strong>${escapeHtml(internshipTitle)}</strong></p>`;
+
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -209,7 +215,7 @@ export const internshipNotificationTemplate = ({ studentName, internshipTitle, c
     <div class="email-body">
       <h2>Hello ${escapeHtml(studentName)},</h2>
       <p>We thought you'd be interested in a new internship that matches your selected track${track ? `: <strong>${escapeHtml(track)}</strong>` : ""}.</p>
-      <p><strong>${escapeHtml(internshipTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong></p>
+      ${detailLine}
       ${location ? `<p>Location: ${escapeHtml(location)}</p>` : ""}
       ${track || location ? `<div class="meta">${track ? `Track: ${escapeHtml(track)}` : ""}${track && location ? " · " : ""}${location ? `Location: ${escapeHtml(location)}` : ""}</div>` : ""}
       ${link ? `<p><a class="cta" href="${escapeUrl(link)}">View internship</a></p>` : ""}
@@ -222,6 +228,7 @@ export const internshipNotificationTemplate = ({ studentName, internshipTitle, c
   </div>
 </body>
 </html>`;
+};
 
 // Re-export the helpers so callers that import the escape utilities from
 // this module still work if they were doing so before the audit.

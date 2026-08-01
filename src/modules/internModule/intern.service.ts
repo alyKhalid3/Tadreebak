@@ -108,9 +108,14 @@ export class InternService {
                         // Build the template args without `undefined` values
                         // — exactOptionalPropertyTypes forbids assigning
                         // `undefined` to an optional property in TS strict.
+                        const universityName = Array.isArray(requiredEducation)
+                            ? requiredEducation.find((education: any) => education?.institution)?.institution?.trim() || undefined
+                            : undefined
+
                         const tmplArgs: Parameters<typeof internshipNotificationTemplate>[0] = {
                             studentName: s.firstName ?? `${s.email}`,
                             internshipTitle: title,
+                            universityName,
                             companyName: company.name ?? '',
                             subject,
                         }

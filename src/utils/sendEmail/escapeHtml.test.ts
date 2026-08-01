@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { escapeHtml, escapeUrl, escapeList } from "./escapeHtml";
+import { internshipNotificationTemplate } from "./generateHtml";
 
 test("escapeHtml escapes the five HTML metacharacters", () => {
     assert.equal(escapeHtml("<script>"), "&lt;script&gt;");
@@ -28,4 +29,17 @@ test("escapeList returns empty string for non-array", () => {
     assert.equal(escapeList(undefined), "");
     assert.equal(escapeList(null as any), "");
     assert.equal(escapeList("not an array" as any), "");
+});
+
+test("internship notification template omits company line when no company is provided", () => {
+    const html = internshipNotificationTemplate({
+        studentName: "Aly",
+        internshipTitle: "Backend Intern",
+        companyName: "",
+        subject: "New internship match",
+    });
+
+    assert.match(html, /<strong>Backend Intern<\/strong>/);
+    assert.doesNotMatch(html, /at <strong><\/strong>/);
+    assert.doesNotMatch(html, /at <strong>\s*<\/strong>/);
 });

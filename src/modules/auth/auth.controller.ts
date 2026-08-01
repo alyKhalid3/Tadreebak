@@ -116,6 +116,8 @@ router.post(authRoutes.signup, validation(AuthValidation.signupSchema), authServ
  * /auth/confirm-email:
  *   patch:
  *     summary: Confirm user email with OTP
+ *     description: |
+ *       After 5 failed OTP attempts the user gets 429 — request a new OTP via /auth/resend-otp.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -156,6 +158,12 @@ router.post(authRoutes.signup, validation(AuthValidation.signupSchema), authServ
  *               $ref: '#/components/schemas/Error'
  *       410:
  *         description: OTP has expired
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Too many failed OTP attempts. Request a new OTP via /auth/resend-otp.
  *         content:
  *           application/json:
  *             schema:
@@ -444,6 +452,9 @@ router.patch(authRoutes.confirmChangeEmail, auth(), validation(AuthValidation.co
  * /auth/forgot-password:
  *   patch:
  *     summary: Request password reset OTP
+ *     description: |
+ *       Only works for accounts created with the `system` provider (email + password).
+ *       Returns 400 for Google / OAuth users — they have no password to reset.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -468,7 +479,7 @@ router.patch(authRoutes.confirmChangeEmail, auth(), validation(AuthValidation.co
  *                 msg:
  *                   type: string
  *       400:
- *         description: Please confirm your email first or wait for 5 minutes
+ *         description: Please confirm your email first, wait for 5 minutes, or this account uses social login
  *         content:
  *           application/json:
  *             schema:
@@ -486,6 +497,10 @@ router.patch(authRoutes.forgotPassword, validation(AuthValidation.forgotPassword
  * /auth/reset-password:
  *   patch:
  *     summary: Reset password using OTP
+ *     description: |
+ *       Only works for accounts created with the `system` provider (email + password).
+ *       Returns 400 for Google / OAuth users.
+ *       After 5 failed OTP attempts the user gets 429 — request a new OTP via /auth/forgot-password.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -521,13 +536,19 @@ router.patch(authRoutes.forgotPassword, validation(AuthValidation.forgotPassword
  *                 msg:
  *                   type: string
  *       400:
- *         description: Invalid OTP or passwords do not match
+ *         description: Invalid OTP, passwords do not match, or this account uses social login
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Too many failed OTP attempts. Request a new OTP via /auth/forgot-password.
  *         content:
  *           application/json:
  *             schema:

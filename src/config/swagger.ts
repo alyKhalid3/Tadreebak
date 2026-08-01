@@ -19,6 +19,20 @@ const options = {
       { url: 'http://localhost:3000/api/v1', description: 'Local' },
       { url: 'https://tadreebak-e285.onbelmo.uk/api/v1/', description: 'Production' },
     ],
+    // Top-level tags array (OpenAPI 3.0 spec). Without this, swagger-ui
+    // lists every route under "default" — not very useful.
+    tags: [
+      { name: 'System', description: 'Health, liveness, and operational endpoints' },
+      { name: 'Auth', description: 'Signup, login, password reset, OTP' },
+      { name: 'User', description: 'Profile management and media uploads' },
+      { name: 'Company', description: 'Company profile, admin actions' },
+      { name: 'Internships', description: 'Internship postings' },
+      { name: 'Applications', description: 'Student applications to internships' },
+      { name: 'Billing', description: 'Plans, credits, Paymob payment flow' },
+      { name: 'Notifications', description: 'In-app notification feed' },
+      { name: 'Ratings', description: 'Mutual ratings after internship completion' },
+      { name: 'Files', description: 'Authenticated file proxy (Cloudinary)' },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -36,11 +50,52 @@ const options = {
             lastName: { type: 'string', example: 'Doe' },
             email: { type: 'string', format: 'email', example: 'john@example.com' },
             phoneNumber: { type: 'string', example: '+1234567890' },
+            role: { type: 'string', enum: ['admin', 'user', 'student', 'company_owner'], example: 'student' },
             isConfirmed: { type: 'boolean', example: false },
             provider: { type: 'string', enum: ['system', 'google', 'facebook'], example: 'system' },
             bio: { type: 'string', example: 'Passionate software developer' },
             headline: { type: 'string', example: 'Software Engineer at Google' },
             skills: { type: 'array', items: { type: 'string' }, example: ['JavaScript', 'Node.js'] },
+            categories: { type: 'array', items: { type: 'string' }, example: ['backend', 'fullstack'] },
+            courses: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  certificate: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      public_id: { type: 'string' },
+                      secure_url: { type: 'string' },
+                      resourceType: { type: 'string', enum: ['image', 'raw'] },
+                    },
+                  },
+                },
+              },
+            },
+            profilePicture: {
+              type: 'object',
+              properties: {
+                public_id: { type: 'string' },
+                secure_url: { type: 'string' },
+              },
+            },
+            coverPicture: {
+              type: 'object',
+              properties: {
+                public_id: { type: 'string' },
+                secure_url: { type: 'string' },
+              },
+            },
+            resume: {
+              type: 'object',
+              properties: {
+                public_id: { type: 'string' },
+                secure_url: { type: 'string' },
+              },
+            },
             education: {
               type: 'array',
               items: {
@@ -49,6 +104,7 @@ const options = {
                   institution: { type: 'string' },
                   degree: { type: 'string' },
                   field: { type: 'string' },
+                  grade: { type: 'string' },
                   startDate: { type: 'string', format: 'date' },
                   endDate: { type: 'string', format: 'date' }
                 }
@@ -56,6 +112,7 @@ const options = {
             },
             experience: {
               type: 'array',
+              description: 'Computed from completed internships. `rating` and `feedback` are only populated after both parties submit a rating, or 14 days after completion.',
               items: {
                 type: 'object',
                 properties: {
@@ -74,7 +131,16 @@ const options = {
             dateOfBirth: { type: 'string', format: 'date' },
             gender: { type: 'string', enum: ['male', 'female'] },
             address: { type: 'string' },
+            // H1: `avgRating` is NOT persisted — compute on the client as
+            // `ratingSum / ratingCount` (default null if ratingCount is 0).
+            ratingCount: { type: 'integer', example: 0 },
+            ratingSum: { type: 'integer', example: 0 },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
+          // Note: password, emailOtp, passwordOtp, newEmailOtp, newEmail,
+          // isChangeCredentialsUpdated, and __v are NEVER returned to the
+          // client. The toSafeUser() projection strips them.
         },
         Tokens: {
           type: 'object',
@@ -135,6 +201,34 @@ const options = {
             addedBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },
             updatedBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },
             closed: { type: 'boolean', example: false },
+            questions: {
+              type: 'array',
+              description: 'Optional application questions attached to the internship',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['mcq', 'writing'] },
+                  prompt: { type: 'string' },
+                  options: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+            preKnowledge: { type: 'array', items: { type: 'string' }, example: ['Node.js', 'MongoDB'] },
+            track: { type: 'array', items: { type: 'string' }, example: ['backend', 'fullstack'] },
+            requiredEducation: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  institution: { type: 'string' },
+                  degree: { type: 'string' },
+                  field: { type: 'string' },
+                  grade: { type: 'string' },
+                  startDate: { type: 'string', format: 'date' },
+                  endDate: { type: 'string', format: 'date' },
+                },
+              },
+            },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
           },
@@ -143,11 +237,12 @@ const options = {
     },
   },
   // The app runs directly from TypeScript source via tsx (no compiled dist output),
-  // so only scan src paths. Remove any dist globs to avoid merging stale
-  // route annotations from old builds on the production server.
+  // so only scan src paths. We include bootstrap.ts because that's where
+  // /health and the /api/v1/docs endpoints are documented.
   apis: [
     path.join(projectRoot, 'src/modules/**/*.ts'),
     path.join(projectRoot, 'src/routes.ts'),
+    path.join(projectRoot, 'src/bootstrap.ts'),
   ],
 };
 

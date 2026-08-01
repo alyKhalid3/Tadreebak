@@ -31,7 +31,15 @@ const applicationService = new ApplicationService()
  * /user/{userId}:
  *   get:
  *     summary: Get user profile by ID
+ *     description: |
+ *       Requires a valid bearer token. The authenticated user can read any
+ *       profile; this is not a self-only endpoint. The `experience` array
+ *       is computed from completed internships — `rating`, `feedback` and
+ *       `feedbackCreatedAt` are only populated after both parties submit
+ *       a rating (or 14 days after completion).
  *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
@@ -51,6 +59,8 @@ const applicationService = new ApplicationService()
  *                   properties:
  *                     user:
  *                       $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Missing or invalid bearer token
  *       404:
  *         description: User not found
  */

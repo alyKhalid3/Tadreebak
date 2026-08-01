@@ -140,25 +140,30 @@ billingRouter.post('/plans/purchase', auth(), AuthZMiddleware([UserRoleEnum.COMP
  *             type: object
  *             required:
  *               - paymentOrderId
+ *               - hmac
  *             properties:
  *               paymentOrderId:
  *                 type: string
- *               success:
- *                 type: string
  *               hmac:
  *                 type: string
+ *                 description: |
+ *                   **Required.** HMAC signature from the Paymob redirect callback.
+ *                   Requests without a valid HMAC are rejected (400) — the `success`
+ *                   flag is never trusted on its own.
+ *               success:
+ *                 type: string
+ *                 description: Paymob's `success` query param. Only acted upon after HMAC verification.
  *               id:
  *                 type: string
  *               order:
  *                 type: string
  *               amount_cents:
  *                 type: string
- *                 description: (plus any other params from the Paymob redirect query string)
  *     responses:
  *       200:
  *         description: Payment confirmed and credits added
  *       400:
- *         description: Payment order not found / HMAC invalid
+ *         description: Payment order not found / missing or invalid HMAC
  *       403:
  *         description: You are not the owner of this company
  */
