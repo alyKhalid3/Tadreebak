@@ -8,6 +8,7 @@ import { notificationRouter } from "./modules/notificationModule";
 import { billingRouter, billingWebhookRouter } from "./modules/billingModule";
 import ratingRouter from "./modules/applicationModule/rating.controller";
 import { serveFileProxy } from "./utils/multer/fileProxy";
+import { auth } from "./middleware/authentication.middleware";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -26,5 +27,7 @@ baseRouter.use('/webhooks/paymob', billingWebhookRouter)
 // Content-Type headers so browsers can open them directly.
 // GET /file-proxy/<filename>.pdf?url=<cloudinary_url>
 baseRouter.use('/application', ratingRouter)
-baseRouter.get('/file-proxy/:filename', serveFileProxy)
+// C10: the proxy used to be fully open. It now requires a valid bearer
+// token AND it only allows fetching from the configured Cloudinary cloud.
+baseRouter.get('/file-proxy/:filename', auth(), serveFileProxy)
 export default baseRouter

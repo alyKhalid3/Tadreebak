@@ -1,6 +1,10 @@
-export const template = ({code, name, subject}:{code:string,name:string,subject:string}) => `<!DOCTYPE html>
+import { escapeHtml, escapeList, escapeUrl } from "./escapeHtml";
+
+export const template = ({ code, name, subject }: { code: string; name: string; subject: string }) => `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -77,11 +81,11 @@ export const template = ({code, name, subject}:{code:string,name:string,subject:
       <h1>Tadreebak</h1>
     </div>
     <div class="email-body">
-      <h2>Hello ${name},</h2>
+      <h2>Hello ${escapeHtml(name)},</h2>
       <p>Welcome to <strong>Tadreebak</strong> 🎓</p>
       <p>To complete your registration, please use the following verification code:</p>
 
-      <div class="code-box">${code}</div>
+      <div class="code-box">${escapeHtml(code)}</div>
 
       <p>This code will help you activate your account and start applying for internships Easily.</p>
 
@@ -97,9 +101,11 @@ export const template = ({code, name, subject}:{code:string,name:string,subject:
 </body>
 </html>`;
 
-export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, preKnowledge, subject }: { studentName: string, internshipTitle: string, companyName: string, preKnowledge: string[], subject: string }) => `<!DOCTYPE html>
+export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, preKnowledge, subject }: { studentName: string; internshipTitle: string; companyName: string; preKnowledge: string[]; subject: string }) => `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -165,11 +171,11 @@ export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, 
       <h1>Tadreebak</h1>
     </div>
     <div class="email-body">
-      <h2>Congratulations, ${studentName}! 🎉</h2>
-      <p>We are thrilled to inform you that your application for the <strong>${internshipTitle}</strong> internship at <strong>${companyName}</strong> has been <strong>accepted</strong>.</p>
+      <h2>Congratulations, ${escapeHtml(studentName)}! 🎉</h2>
+      <p>We are thrilled to inform you that your application for the <strong>${escapeHtml(internshipTitle)}</strong> internship at <strong>${escapeHtml(companyName)}</strong> has been <strong>accepted</strong>.</p>
       <p>To help you prepare, here is some pre-knowledge that will be useful for this internship:</p>
       <ul class="skills-list">
-        ${preKnowledge.map(skill => `<li>${skill}</li>`).join('\n        ')}
+        ${preKnowledge.map(skill => `<li>${escapeHtml(skill)}</li>`).join("\n        ")}
       </ul>
       <p>Get ready to learn, grow, and make the most of this opportunity.</p>
       <p>Best regards,<br>Tadreebak Team</p>
@@ -182,9 +188,11 @@ export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, 
 </body>
 </html>`;
 
-export const internshipNotificationTemplate = ({ studentName, internshipTitle, companyName, track, location, link, subject }:{ studentName:string, internshipTitle:string, companyName:string, track?: string | undefined, location?: string | undefined, link?: string | undefined, subject?: string | undefined }) => `<!DOCTYPE html>
+export const internshipNotificationTemplate = ({ studentName, internshipTitle, companyName, track, location, link, subject }: { studentName: string; internshipTitle: string; companyName: string; track?: string; location?: string; link?: string; subject?: string }) => `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject ?? "New internship match")}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; }
     .email-container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
@@ -199,12 +207,12 @@ export const internshipNotificationTemplate = ({ studentName, internshipTitle, c
   <div class="email-container">
     <div class="email-header"><h1>Tadreebak</h1></div>
     <div class="email-body">
-      <h2>Hello ${studentName},</h2>
-      <p>We thought you'd be interested in a new internship that matches your selected track${track ? `: <strong>${track}</strong>` : ''}.</p>
-      <p><strong>${internshipTitle}</strong> at <strong>${companyName}</strong></p>
-      ${location ? `<p>Location: ${location}</p>` : ''}
-      ${track || location ? `<div class="meta">${track ? `Track: ${track}` : ''}${track && location ? ' · ' : ''}${location ? `Location: ${location}` : ''}</div>` : ''}
-      ${link ? `<p><a class="cta" href="${link}">View internship</a></p>` : ''}
+      <h2>Hello ${escapeHtml(studentName)},</h2>
+      <p>We thought you'd be interested in a new internship that matches your selected track${track ? `: <strong>${escapeHtml(track)}</strong>` : ""}.</p>
+      <p><strong>${escapeHtml(internshipTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong></p>
+      ${location ? `<p>Location: ${escapeHtml(location)}</p>` : ""}
+      ${track || location ? `<div class="meta">${track ? `Track: ${escapeHtml(track)}` : ""}${track && location ? " · " : ""}${location ? `Location: ${escapeHtml(location)}` : ""}</div>` : ""}
+      ${link ? `<p><a class="cta" href="${escapeUrl(link)}">View internship</a></p>` : ""}
       <p>If this isn't relevant, you can ignore this email.</p>
       <p>Best regards,<br/>Tadreebak Team</p>
     </div>
@@ -214,3 +222,7 @@ export const internshipNotificationTemplate = ({ studentName, internshipTitle, c
   </div>
 </body>
 </html>`;
+
+// Re-export the helpers so callers that import the escape utilities from
+// this module still work if they were doing so before the audit.
+export { escapeHtml, escapeList, escapeUrl };

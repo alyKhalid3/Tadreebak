@@ -29,7 +29,8 @@ export interface ICompany {
     legalAttachment:fileAttributtes
     approvedByAdmin: boolean
     internshipCredits: number
-    avgRating?: number | null
+    // `avgRating` is NOT persisted — see utils/avgRating.ts.
     ratingCount: number
+    ratingSum?: number
     googleMapsUrl?: string
 }

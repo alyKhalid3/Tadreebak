@@ -8,6 +8,7 @@ export enum UserRoleEnum {
 export type otp = {
     otp: string;
     expiresAt: Date;
+    attempts?: number;
 }
 export enum ProviderEnum {
     SYSTEM = 'system',
@@ -89,6 +90,9 @@ export interface IUser {
     gender?: 'male' | 'female';
     address?: string;
     categories?: InterestCategory[];
-    avgRating?: number | null
+    // `avgRating` is NOT persisted — it is computed on read from
+    // `ratingSum / ratingCount` (see utils/avgRating.ts). Storing it
+    // would require a non-atomic read-modify-write, which is racy.
     ratingCount: number
+    ratingSum?: number
 }

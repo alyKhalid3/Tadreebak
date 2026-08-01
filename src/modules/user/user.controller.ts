@@ -54,7 +54,7 @@ const applicationService = new ApplicationService()
  *       404:
  *         description: User not found
  */
-router.get(userRoutes.getProfile, userService.getProfile)
+router.get(userRoutes.getProfile, auth(), userService.getProfile)
 /**
  * @swagger
  * /user/{userId}:

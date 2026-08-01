@@ -165,16 +165,21 @@ export class BillingService {
             const success = txData.success === true || txData.success === 'true'
 
             if (success) {
-                await this.paymentOrderRepo.update({
+                // C2: only credit when this call actually flipped the row.
+                // Paymob retries (or any second invocation) will get a falsy
+                // result back, and we skip the $inc — guaranteeing at-most-once
+                // crediting without needing a transaction.
+                const flipped = await this.paymentOrderRepo.update({
                     filter: { _id: (paymentOrder as any)._id, status: PaymentOrderStatus.PENDING },
                     data: { status: PaymentOrderStatus.PAID, paidAt: new Date() },
                 })
-
-                // Atomically add credits to the company.
-                await companyModel.updateOne(
-                    { _id: paymentOrder.companyId },
-                    { $inc: { internshipCredits: paymentOrder.credits } },
-                )
+                if (flipped) {
+                    // Atomically add credits to the company.
+                    await companyModel.updateOne(
+                        { _id: paymentOrder.companyId },
+                        { $inc: { internshipCredits: paymentOrder.credits } },
+                    )
+                }
             } else {
                 await this.paymentOrderRepo.update({
                     filter: { _id: (paymentOrder as any)._id, status: PaymentOrderStatus.PENDING },
@@ -220,24 +225,35 @@ export class BillingService {
                 return successHandler({ res, message: "Payment already processed", data: { status: paymentOrder.status } })
             }
 
-            // Verify HMAC if present (POST webhooks include it; GET redirects
-            // sometimes do too depending on the integration).
-            if (hmac && !verifyCallbackHmac(txParams, hmac)) {
+            // C1: HMAC is now MANDATORY. Previously the check was skipped when
+            // the client omitted it, which let any logged-in company owner
+            // mint unlimited credits by simply posting { success: true }.
+            if (!hmac) {
+                throw new ApplicationError("Missing HMAC signature", 400)
+            }
+            if (!verifyCallbackHmac(txParams, hmac)) {
                 throw new ApplicationError("Invalid HMAC signature", 400)
             }
 
             const success = txParams.success === 'true' || txParams.success === true
 
             if (success) {
-                await this.paymentOrderRepo.update({
+                // C2: only credit the company when this update actually flipped
+                // the row from PENDING -> PAID. Two concurrent confirmations
+                // (e.g. Paymob retry racing the frontend callback) will both
+                // pass the JS status check above, but only the first one will
+                // match the conditional filter and only that one will issue
+                // the $inc. The second $inc is a no-op (matchedCount === 0).
+                const flipped = await this.paymentOrderRepo.update({
                     filter: { _id: (paymentOrder as any)._id, status: PaymentOrderStatus.PENDING },
                     data: { status: PaymentOrderStatus.PAID, paidAt: new Date() },
                 })
-
-                await companyModel.updateOne(
-                    { _id: paymentOrder.companyId },
-                    { $inc: { internshipCredits: paymentOrder.credits } },
-                )
+                if (flipped) {
+                    await companyModel.updateOne(
+                        { _id: paymentOrder.companyId },
+                        { $inc: { internshipCredits: paymentOrder.credits } },
+                    )
+                }
 
                 return successHandler({
                     res,

@@ -3,6 +3,8 @@ import { InternService } from "./intern.service";
 import { validation } from "../../middleware/validation.middleware";
 import * as InternValidation from "./intern.validation";
 import { auth } from "../../middleware/authentication.middleware";
+import { AuthZMiddleware } from "../../middleware/authorization.middleware";
+import { UserRoleEnum } from "../../DB/types/user.type";
 import { applicationRouter } from "../applicationModule";
 
 export const internRoutes = {
@@ -265,7 +267,7 @@ const companyRouter = Router({ mergeParams: true })
  *       404:
  *         description: Company not found
  */
-companyRouter.post('/', auth(), validation(InternValidation.createInternSchema), internService.create)
+companyRouter.post('/', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), validation(InternValidation.createInternSchema), internService.create)
 /**
  * @swagger
  * /company/{companyId}/internships/{internId}:
@@ -395,7 +397,7 @@ companyRouter.post('/', auth(), validation(InternValidation.createInternSchema),
  *       404:
  *         description: Internship not found
  */
-companyRouter.put('/:internId', auth(), validation(InternValidation.updateInternSchema), internService.update)
+companyRouter.put('/:internId', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), validation(InternValidation.updateInternSchema), internService.update)
 /**
  * @swagger
  * /company/{companyId}/internships/{internId}:
@@ -436,7 +438,7 @@ companyRouter.put('/:internId', auth(), validation(InternValidation.updateIntern
  *       404:
  *         description: Internship not found
  */
-companyRouter.delete('/:internId', auth(), internService.delete)
+companyRouter.delete('/:internId', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), internService.delete)
 
 // Internship applications — inherits :companyId and :internId via mergeParams.
 // Exposes POST/GET on /:internId/applications and PATCH/DELETE on /:internId/applications/:applicationId.

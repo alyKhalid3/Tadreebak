@@ -2,6 +2,8 @@ import { Router } from "express";
 import { BillingService } from "./billing.service";
 import { validation } from "../../middleware/validation.middleware";
 import { auth } from "../../middleware/authentication.middleware";
+import { AuthZMiddleware } from "../../middleware/authorization.middleware";
+import { UserRoleEnum } from "../../DB/types/user.type";
 import * as BillingValidation from "./billing.validation";
 
 const billingService = new BillingService()
@@ -30,7 +32,7 @@ const billingRouter = Router({ mergeParams: true })
  *       403:
  *         description: You are not the owner of this company
  */
-billingRouter.get('/plans', auth(), billingService.listPlans)
+billingRouter.get('/plans', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), billingService.listPlans)
 
 /**
  * @swagger
@@ -64,7 +66,7 @@ billingRouter.get('/plans', auth(), billingService.listPlans)
  *       403:
  *         description: You are not the owner of this company
  */
-billingRouter.get('/credits', auth(), billingService.getCredits)
+billingRouter.get('/credits', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), billingService.getCredits)
 
 /**
  * @swagger
@@ -114,7 +116,7 @@ billingRouter.get('/credits', auth(), billingService.getCredits)
  *       403:
  *         description: You are not the owner of this company
  */
-billingRouter.post('/plans/purchase', auth(), validation(BillingValidation.purchasePlanSchema), billingService.initiatePurchase)
+billingRouter.post('/plans/purchase', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), validation(BillingValidation.purchasePlanSchema), billingService.initiatePurchase)
 
 /**
  * @swagger
@@ -160,7 +162,7 @@ billingRouter.post('/plans/purchase', auth(), validation(BillingValidation.purch
  *       403:
  *         description: You are not the owner of this company
  */
-billingRouter.post('/payment/confirm', auth(), validation(BillingValidation.confirmPaymentSchema), billingService.confirmPayment)
+billingRouter.post('/payment/confirm', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), validation(BillingValidation.confirmPaymentSchema), billingService.confirmPayment)
 
 // Public webhook router — mounted at /webhooks/paymob
 // No auth; Paymob calls this server-to-server after a payment attempt.

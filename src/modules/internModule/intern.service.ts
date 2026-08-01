@@ -33,28 +33,51 @@ export class InternService {
                 )
             }
 
-            const internship = await this.internRepo.create({
-                data: {
-                    title,
-                    description,
-                    location,
-                    workingTime,
-                    softSkills: softSkills as string[],
-                    technicalSkills: technicalSkills as string[],
-                    questions,
-                    preKnowledge,
-                    track,
-                    requiredEducation,
-                    companyId: new mongoose.Types.ObjectId(companyId),
-                    addedBy: user._id,
-                    updatedBy: user._id,
-                }
-            })
-
-            await companyModel.updateOne(
+            // C6: do the credit check + decrement as a single conditional
+            // update BEFORE we create the internship. The previous code did
+            // a non-atomic JS read, then created the internship, then issued
+            // a conditional $inc — which let two parallel requests both pass
+            // the check and both create an internship (only the first $inc
+            // succeeded, so the second one was a free posting).
+            const decrement = await companyModel.updateOne(
                 { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
                 { $inc: { internshipCredits: -1 } },
             )
+            if (!decrement || decrement.modifiedCount === 0) {
+                throw new ApplicationError(
+                    "You have reached your internship posting limit. Purchase a plan to post more internships.",
+                    402,
+                )
+            }
+
+            let internship
+            try {
+                internship = await this.internRepo.create({
+                    data: {
+                        title,
+                        description,
+                        location,
+                        workingTime,
+                        softSkills: softSkills as string[],
+                        technicalSkills: technicalSkills as string[],
+                        questions,
+                        preKnowledge,
+                        track,
+                        requiredEducation,
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        addedBy: user._id,
+                        updatedBy: user._id,
+                    }
+                })
+            } catch (err) {
+                // Refund the credit we just spent — otherwise a transient
+                // Mongo blip or a duplicate-index violation eats user money.
+                await companyModel.updateOne(
+                    { _id: new mongoose.Types.ObjectId(companyId) },
+                    { $inc: { internshipCredits: 1 } },
+                )
+                throw err
+            }
 
             // Notify matching students in background: those who selected the internship `track`
             void (async () => {
@@ -82,15 +105,19 @@ export class InternService {
                         const subject = `New internship matching your interests: ${title}`
                         const baseUrl = (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim()) ? process.env.FRONTEND_URL : (process.env.APP_URL && process.env.APP_URL.trim()) ? process.env.APP_URL : `${req.protocol}://${req.get('host')}`
                         const internshipId = (internship as any)._id ? (internship as any)._id.toString() : undefined
-                        const html = internshipNotificationTemplate({
+                        // Build the template args without `undefined` values
+                        // — exactOptionalPropertyTypes forbids assigning
+                        // `undefined` to an optional property in TS strict.
+                        const tmplArgs: Parameters<typeof internshipNotificationTemplate>[0] = {
                             studentName: s.firstName ?? `${s.email}`,
                             internshipTitle: title,
                             companyName: company.name ?? '',
-                            track: trackStr,
-                            location,
-                            link: internshipId ? `${baseUrl.replace(/\/$/, '')}/internships/${internshipId}` : undefined,
                             subject,
-                        })
+                        }
+                        if (trackStr !== undefined) tmplArgs.track = trackStr
+                        if (location !== undefined) tmplArgs.location = location
+                        if (internshipId) tmplArgs.link = `${baseUrl.replace(/\/$/, '')}/internships/${internshipId}`
+                        const html = internshipNotificationTemplate(tmplArgs)
 
                         emailEmitter.publish('send-email-new-internship', { to: s.email, subject, html })
 
@@ -164,12 +191,20 @@ export class InternService {
 
             const internObjectId = mongoose.Types.ObjectId.createFromHexString(internId)
 
-            // Cascade-delete applications so no orphaned docs remain pointing at
-            // a non-existent internship.
-            await Promise.all([
-                this.internRepo.deleteMany({ filter: { _id: internObjectId } }),
-                this.applicationRepo.deleteMany({ filter: { internshipId: internObjectId } }),
-            ])
+            // H2: do the two deletes in a transaction so we can never end up
+            // with orphan application docs pointing at a deleted internship
+            // (or vice-versa). The previous Promise.all fired both deletes
+            // independently and any single failure left the system in a
+            // half-deleted state.
+            const session = await mongoose.startSession()
+            try {
+                await session.withTransaction(async () => {
+                    await this.applicationRepo.deleteMany({ filter: { internshipId: internObjectId }, options: { session } })
+                    await this.internRepo.deleteMany({ filter: { _id: internObjectId }, options: { session } })
+                })
+            } finally {
+                session.endSession()
+            }
 
             return successHandler({ res, message: "Internship deleted successfully" })
         } catch (error) {

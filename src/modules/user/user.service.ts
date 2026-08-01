@@ -5,6 +5,7 @@ import multer from 'multer'
 import { Request, Response, NextFunction } from 'express'
 import { ApplicationError } from '../../utils/error'
 import { successHandler } from '../../utils/successHandler'
+import { toSafeUser } from '../../utils/safeUser';
 
 import { CompanyRepo } from '../../DB/repos/company.repo';
 import { NotFoundException } from '../../utils/error';
@@ -175,9 +176,10 @@ export class UserService {
             const experience = user.role === UserRoleEnum.STUDENT
                 ? await this.buildStudentExperience(user._id.toString())
                 : user.experience
-            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, courses, resume, dateOfBirth, gender, address, categories }) =>
-                ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider, profilePicture, coverPicture, bio, headline, skills, education, experience, courses, resume, dateOfBirth, gender, address, categories }))(user.toObject())
-            return successHandler({ res, data: { user: safeUser } })
+            // Project to a safe DTO so we never leak password hash, OTPs, etc.
+            const safe = toSafeUser(user.toObject()) as Record<string, any>
+            safe.experience = experience
+            return successHandler({ res, data: { user: safe } })
         } catch (error) {
             next(error)
         }
@@ -204,7 +206,9 @@ export class UserService {
             if (!updatedUser) {
                 throw new NotFoundException('User not found')
             }
-            return successHandler({ res, message: 'Profile updated successfully', data: { user: updatedUser } })
+            // Project to the safe DTO so we don't return password hash / OTPs.
+            const safe = toSafeUser(updatedUser.toObject ? updatedUser.toObject() : updatedUser)
+            return successHandler({ res, message: 'Profile updated successfully', data: { user: safe } })
         } catch (error) {
             next(error)
         }

@@ -10,7 +10,7 @@ import { IAnswer, IQuestion, QuestionType } from "../../DB/types/question.type";
 import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import { assertOwnedCompany } from "../../utils/companyAccess";
-import { uploadSingleFile } from "../../utils/multer/cloudinary.service";
+import { uploadSingleFile, destroySingleFile } from "../../utils/multer/cloudinary.service";
 import { notificationEmitter } from "../../utils/notifications/notificationEvents";
 import { NotificationType } from "../../DB/types/notification.type";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
@@ -165,6 +165,16 @@ export class ApplicationService {
                 })
             } catch (err: any) {
                 if (err && err.code === 11000) {
+                    // H4: if the user just uploaded a fresh CV, delete it
+                    // from Cloudinary — otherwise it lives forever as an
+                    // orphan (and we still have the user's profile resume).
+                    if (uploadedFile && resume?.public_id) {
+                        try {
+                            await destroySingleFile(resume.public_id, "raw")
+                        } catch (cleanupErr) {
+                            console.error("Failed to clean up orphan CV on duplicate apply:", cleanupErr)
+                        }
+                    }
                     throw new ApplicationError("You have already applied to this internship", 409)
                 }
                 throw err
@@ -412,6 +422,13 @@ export class ApplicationService {
             if (!internship) {
                 throw new NotFoundException("Internship not found")
             }
+            // C11: also confirm the internship actually belongs to the company
+            // named in the URL. Without this a company owner could pass any
+            // applicationId from any other company's internship and trigger an
+            // email to the applicant that misuses the attacker's company name.
+            if (internship.companyId.toString() !== companyId) {
+                throw new NotFoundException("Internship not found")
+            }
 
             const student = await this.userRepo.findById({ id: application.studentId.toString() })
             if (!student) {
@@ -542,28 +559,21 @@ export class ApplicationService {
                 }
                 const rating = await new RatingModel(ratingDoc).save({ session })
 
+                // H1: previously we did a read-modify-write on (avgRating,
+                // ratingCount) inside the transaction. Two concurrent ratings
+                // would both read the same old avg, compute the same new avg,
+                // and write it back — drifting the average away from the
+                // true mean. Now we just $inc the count and $push the score
+                // onto a `ratingSum` field; the average is recomputed on
+                // read by the service that exposes it.
                 if (targetType === RatingTarget.COMPANY) {
-                    const company = await companyModel.findById(targetId).session(session)
-                    if (company) {
-                        const oldAvg = company.avgRating ?? 0
-                        const count = company.ratingCount ?? 0
-                        const newAvg = (oldAvg * count + score) / (count + 1)
-                        await companyModel.findByIdAndUpdate(targetId, {
-                            $set: { avgRating: newAvg },
-                            $inc: { ratingCount: 1 },
-                        }, { session })
-                    }
+                    await companyModel.findByIdAndUpdate(targetId, {
+                        $inc: { ratingCount: 1, ratingSum: score },
+                    }, { session })
                 } else {
-                    const targetUser = await UserModel.findById(targetId).session(session)
-                    if (targetUser) {
-                        const oldAvg = targetUser.avgRating ?? 0
-                        const count = targetUser.ratingCount ?? 0
-                        const newAvg = (oldAvg * count + score) / (count + 1)
-                        await UserModel.findByIdAndUpdate(targetId, {
-                            $set: { avgRating: newAvg },
-                            $inc: { ratingCount: 1 },
-                        }, { session })
-                    }
+                    await UserModel.findByIdAndUpdate(targetId, {
+                        $inc: { ratingCount: 1, ratingSum: score },
+                    }, { session })
                 }
 
                 await session.commitTransaction()

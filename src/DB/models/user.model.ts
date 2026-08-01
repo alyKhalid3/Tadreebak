@@ -15,15 +15,18 @@ const userSchema = new mongoose.Schema<IUser>({
     newEmail: { type: String, unique: true, sparse: true },
     emailOtp: {
         otp: { type: String },
-        expiresAt: { type: Date }
+        expiresAt: { type: Date },
+        attempts: { type: Number, default: 0 },
     },
     passwordOtp: {
         otp: { type: String },
-        expiresAt: { type: Date }
+        expiresAt: { type: Date },
+        attempts: { type: Number, default: 0 },
     },
     newEmailOtp: {
         otp: { type: String },
-        expiresAt: { type: Date }
+        expiresAt: { type: Date },
+        attempts: { type: Number, default: 0 },
     },
     // sparse so Google/OAuth users (no phone) don't collide on a null value
     phoneNumber: { type: String, unique: true, sparse: true },
@@ -72,8 +75,8 @@ const userSchema = new mongoose.Schema<IUser>({
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ['male', 'female'] },
     address: { type: String },
-    avgRating: { type: Number, default: null },
-    ratingCount: { type: Number, default: 0 }
+    ratingCount: { type: Number, default: 0 },
+    ratingSum: { type: Number, default: 0 },
 }, { timestamps: true });
 
 userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }) {

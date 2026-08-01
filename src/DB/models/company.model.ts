@@ -38,8 +38,8 @@ export const companySchema = new mongoose.Schema<ICompany>({
     },
     approvedByAdmin: { type: Boolean, default: false },
     internshipCredits: { type: Number, default: 1, min: 0 },
-    avgRating: { type: Number, default: null },
-    ratingCount: { type: Number, default: 0 }
+    ratingCount: { type: Number, default: 0 },
+    ratingSum: { type: Number, default: 0 },
 }, { timestamps: true });
 
 // Link-out to Google Maps when coordinates exist. Present in every serialized
@@ -49,6 +49,11 @@ companySchema.virtual('googleMapsUrl').get(function () {
     if (typeof lat !== 'number' || typeof lng !== 'number') return undefined
     return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 })
+// H1: the previous design stored an `avgRating` field and updated it via a
+// non-atomic read-modify-write inside a transaction, which let two
+// concurrent ratings drift the average. Now we only persist `ratingSum`
+// and `ratingCount`; the average is computed by the read path with
+// `computeAvgRating(doc)` (see utils/avgRating.ts).
 companySchema.set('toJSON', { virtuals: true })
 companySchema.set('toObject', { virtuals: true })
 

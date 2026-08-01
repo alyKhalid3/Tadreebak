@@ -23,7 +23,10 @@ export const authRoutes = {
     resendEmailOtp: '/resend-otp'
 }
 const router = Router()
-// router.use(authLimiter)
+// Apply the per-IP auth limiter to all auth endpoints. 10 attempts per 15 min
+// is enough for legitimate users and short enough to make brute-forcing the
+// 6-digit OTP (C4 in the audit) impractical without a distributed botnet.
+router.use(authLimiter)
 const authService = new AuthService()
 
 

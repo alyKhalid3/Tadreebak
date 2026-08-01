@@ -1,7 +1,7 @@
 import { UserRepo } from './../../DB/repos/user.repo';
 import { NextFunction, Request, Response } from "express";
 import { confirmEmailDTO, signupDTO, changePasswordDTO, changeEmailDTO } from './auth.DTO';
-import { ApplicationError, BadRequestException, EmailIsExistException, ExpiredOTPException, NotFoundException } from '../../utils/error';
+import { ApplicationError, BadRequestException, EmailIsExistException, ExpiredOTPException, InvalidTokenException, NotFoundException } from '../../utils/error';
 import { createOtp } from '../../utils/sendEmail/createOtp';
 import { successHandler } from '../../utils/successHandler';
 import { compareHash, createHash } from '../../utils/hash';
@@ -10,6 +10,10 @@ import { createJwt, verifyJwt } from '../../utils/jwt';
 import { template } from '../../utils/sendEmail/generateHtml';
 import { emailEmitter } from '../../utils/sendEmail/emailEvents';
 import { OAuth2Client } from 'google-auth-library';
+import { toSafeUser } from '../../utils/safeUser';
+import jsonwebtoken from 'jsonwebtoken';
+import { payload as JwtPayload } from '../../middleware/authentication.middleware';
+import { verifyOtpAsync, throwForOtpResult } from '../../utils/otp';
 
 export const generateLoginTokens = (userId: string) => {
     const accessToken = createJwt({ id: userId }, process.env.ACCESS_TOKEN_SECRET as string, { expiresIn: '1h' })
@@ -47,8 +51,7 @@ export class AuthService {
                 createData.education = education as any
             }
             const user = await this.userRepo.create({ data: createData })
-            const safeUser = (({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider }) =>
-                ({ _id, firstName, lastName, email, phoneNumber, role, isConfirmed, provider }))(user.toObject())
+            const safeUser = toSafeUser(user.toObject())
             return successHandler({ res, message: "User created successfully", data: { user: safeUser } })
         } catch (error) {
             next(error)
@@ -64,17 +67,21 @@ export class AuthService {
             if (user.isConfirmed) {
                 throw new ApplicationError("Email is already confirmed", 400)
             }
-            if (!user.emailOtp?.expiresAt || user.emailOtp.expiresAt.getTime() < Date.now()) {
-                throw new ExpiredOTPException("OTP has expired")
-            }
-            const isMatch = await compareHash({ text: otp, hashed: user.emailOtp.otp })
-            if (!isMatch) {
-                throw new ApplicationError("Invalid OTP", 400)
+            const result = await verifyOtpAsync(user.emailOtp, otp)
+            if (!result.ok) {
+                // Bump the attempt counter so brute-force attempts eventually
+                // hit the cap. We do this even on "expired" so an attacker
+                // can't keep probing past the window.
+                await this.userRepo.update({
+                    filter: { email },
+                    data: { $inc: { 'emailOtp.attempts': 1 } },
+                })
+                throwForOtpResult(result)
             }
 
             await this.userRepo.update({
                 filter: { email },
-                data: { isConfirmed: true, emailOtp: { otp: '', expiresAt: new Date() } }
+                data: { isConfirmed: true, emailOtp: { otp: '', expiresAt: new Date(), attempts: 0 } }
             })
             return successHandler({ res, message: "Email confirmed successfully" })
         } catch (error) {
@@ -170,10 +177,18 @@ export class AuthService {
             if (!user) {
                 throw new NotFoundException("User not found")
             }
+            // C13: Google/OAuth users have no password to reset. Sending them
+            // an OTP is useless UX and gives an attacker another endpoint to
+            // probe. Return a generic 400 instead.
+            if (user.provider !== ProviderEnum.SYSTEM || !user.password) {
+                throw new ApplicationError("This account uses social login and has no password to reset", 400)
+            }
             if (!user.isConfirmed) {
                 throw new ApplicationError("Please confirm your email to proceed", 400)
             }
-            if (user.passwordOtp.expiresAt?.getTime() > Date.now()) {
+            // Guard against undefined passwordOtp on a fresh account.
+            const existingExpiry = user.passwordOtp?.expiresAt?.getTime() ?? 0
+            if (existingExpiry > Date.now()) {
                 throw new ApplicationError("wait for 5 minutes", 400)
             }
             const subject = "Your Password Reset OTP code"
@@ -196,16 +211,25 @@ export class AuthService {
             if (!user) {
                 throw new NotFoundException("User not found")
             }
-            if (!user.passwordOtp?.expiresAt || user.passwordOtp.expiresAt.getTime() < Date.now()) {
-                throw new ExpiredOTPException("OTP has expired")
+            // C13: refuse to reset passwords on OAuth-only accounts.
+            if (user.provider !== ProviderEnum.SYSTEM || !user.password) {
+                throw new ApplicationError("This account uses social login and has no password to reset", 400)
             }
-            const isMatch = await compareHash({ text: otp, hashed: user.passwordOtp.otp })
-            if (!isMatch) {
-                throw new ApplicationError("Invalid OTP", 400)
+            const result = await verifyOtpAsync(user.passwordOtp, otp)
+            if (!result.ok) {
+                await this.userRepo.update({
+                    filter: { email },
+                    data: { $inc: { 'passwordOtp.attempts': 1 } },
+                })
+                throwForOtpResult(result)
             }
             await this.userRepo.update({
                 filter: { email },
-                data: { password: await createHash({ text: password }), passwordOtp: { otp: '', expiresAt: new Date() }, isChangeCredentialsUpdated: new Date() }
+                data: {
+                    password: await createHash({ text: password }),
+                    passwordOtp: { otp: '', expiresAt: new Date(), attempts: 0 },
+                    isChangeCredentialsUpdated: new Date(),
+                }
             })
             return successHandler({ res, message: "Password Changed successfully" })
         } catch (error) {
@@ -215,9 +239,20 @@ export class AuthService {
     refreshToken = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { refreshToken } = req.body
-            const payload = verifyJwt(refreshToken, process.env.REFRESH_TOKEN_SECRET as string)
+            // C12: jwt.verify throws raw jsonwebtoken errors (no statusCode).
+            // Normalize them to InvalidTokenException so the global handler
+            // returns 401 instead of leaking 500s to the client.
+            let payload: JwtPayload
+            try {
+                payload = verifyJwt(refreshToken, process.env.REFRESH_TOKEN_SECRET as string) as JwtPayload
+            } catch (err) {
+                if (err instanceof jsonwebtoken.TokenExpiredError) {
+                    throw new InvalidTokenException("Refresh token expired")
+                }
+                throw new InvalidTokenException("Invalid refresh token")
+            }
             if (!payload.id) {
-                throw new ApplicationError('Invalid refresh token', 401)
+                throw new InvalidTokenException('Invalid refresh token')
             }
             const user = await this.userRepo.findById({ id: payload.id })
             if (!user) {
@@ -301,19 +336,20 @@ export class AuthService {
             if (!user.newEmail) {
                 throw new ApplicationError('No email change requested', 400)
             }
-            if (!user.newEmailOtp?.expiresAt || user.newEmailOtp.expiresAt.getTime() < Date.now()) {
-                throw new ExpiredOTPException('OTP has expired')
-            }
-            const isMatch = await compareHash({ text: otp, hashed: user.newEmailOtp.otp })
-            if (!isMatch) {
-                throw new ApplicationError('Invalid OTP', 400)
+            const result = await verifyOtpAsync(user.newEmailOtp, otp)
+            if (!result.ok) {
+                await this.userRepo.update({
+                    filter: { _id: user._id },
+                    data: { $inc: { 'newEmailOtp.attempts': 1 } },
+                })
+                throwForOtpResult(result)
             }
             await this.userRepo.update({
                 filter: { _id: user._id },
                 data: {
                     email: user.newEmail,
                     newEmail: null,
-                    newEmailOtp: { otp: '', expiresAt: new Date() },
+                    newEmailOtp: { otp: '', expiresAt: new Date(), attempts: 0 },
                     isChangeCredentialsUpdated: new Date()
                 }
             })

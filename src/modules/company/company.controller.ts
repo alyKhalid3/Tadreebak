@@ -149,6 +149,7 @@ router.get(
  */
 router.post(
     companyRoutes.create, auth(),
+    AuthZMiddleware([UserRoleEnum.STUDENT, UserRoleEnum.COMPANY_OWNER]),
     uploadFile({ fileType: fileTypes.pdf, storeIn: StoreIn.DISK }).single('legalAttachment'),
     validation(CompanyValidation.createCompany),
     companyService.create
