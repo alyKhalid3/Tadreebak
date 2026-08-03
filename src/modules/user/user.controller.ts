@@ -18,6 +18,7 @@ export const userRoutes = {
     uploadCoverPicture: '/upload/coverPicture',
     uploadResume: '/upload/resume',
     uploadCourseCertificate: '/upload/course-certificate/:courseIndex',
+    addCourse: '/courses',
     myApplications: '/:userId/applications',
     getProfile: '/:userId',
     update: '/:userId',
@@ -121,7 +122,11 @@ router.get(userRoutes.getProfile, auth(), userService.getProfile)
  *                   properties:
  *                     name:
  *                       type: string
- *                   description: Student courses. Upload certificates separately with the course certificate endpoint.
+ *                   description: |
+ *                     Student courses. To add a course together with its
+ *                     certificate in one call, use POST /user/courses (multipart)
+ *                     instead of PATCH. This PATCH endpoint can still be used to
+ *                     add a course without a certificate.
  *                 maxItems: 20
  *               education:
  *                 type: array
@@ -270,6 +275,76 @@ router.post(
     auth(),
     uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
     userService.uploadCourseCertificate
+)
+
+/**
+ * @swagger
+ * /user/courses:
+ *   post:
+ *     summary: Add a course, optionally with a certificate, in one call
+ *     description: |
+ *       Unified endpoint to add a course to the authenticated user's profile.
+ *       The `file` field is optional — if omitted, the course is created with
+ *       no certificate and you can attach one later via
+ *       `/user/upload/course-certificate/{courseIndex}`. If the certificate
+ *       upload fails, the course is NOT created (atomic — no orphan course
+ *       pointing at a missing file).
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 description: Course name
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Optional certificate (image or PDF, max 2 MB).
+ *     responses:
+ *       201:
+ *         description: Course added successfully (with or without certificate)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     course:
+ *                       type: object
+ *                       properties:
+ *                         index: { type: integer, description: "Index of the new course in the user's `courses` array" }
+ *                         name: { type: string }
+ *                         certificate:
+ *                           type: object
+ *                           nullable: true
+ *                           properties:
+ *                             public_id: { type: string }
+ *                             secure_url: { type: string }
+ *                             resourceType: { type: string, enum: [image, raw] }
+ *                 msg: { type: string }
+ *       400:
+ *         description: Missing/invalid name or unsupported file type
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       409:
+ *         description: Maximum 20 courses reached
+ */
+router.post(
+    userRoutes.addCourse,
+    auth(),
+    uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
+    userService.addCourse
 )
 
 /**

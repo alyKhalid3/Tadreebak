@@ -163,6 +163,88 @@ export class UserService {
             next(error)
         }
     }
+    /**
+     * Add a course (and optionally its certificate) to the authenticated
+     * user's profile in a single call. Atomic: if the cert upload fails,
+     * the course is NOT added.
+     *
+     * If no file is uploaded, the course is added with no certificate and
+     * the user can attach one later via /user/upload/course-certificate/{index}.
+     */
+    addCourse = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const { name } = req.body as { name?: string }
+            const file = req.file as Express.Multer.File | undefined
+
+            if (!name || typeof name !== 'string') {
+                throw new ApplicationError('Course name is required', 400)
+            }
+            const trimmedName = name.trim()
+            if (trimmedName.length < 2 || trimmedName.length > 100) {
+                throw new ApplicationError('Course name must be 2-100 characters', 400)
+            }
+
+            // Cap at 20 courses — same as the updateProfile schema.
+            const currentUser = await this.userRepo.findById({ id: user._id.toString() })
+            if (!currentUser) {
+                throw new NotFoundException('User not found')
+            }
+            if ((currentUser.courses?.length ?? 0) >= 20) {
+                throw new ApplicationError('Maximum 20 courses reached', 409)
+            }
+
+            let certificate: { public_id: string; secure_url: string; resourceType: 'image' | 'raw' } | undefined
+            if (file) {
+                const resourceType: 'image' | 'raw' = file.mimetype === 'application/pdf' ? 'raw' : 'image'
+                try {
+                    const uploaded = await uploadSingleFile({
+                        path: file.path,
+                        folder: `/users/${user.firstName}_${user._id}/courses/${(currentUser.courses?.length ?? 0)}/certificate`,
+                        resourceType,
+                    })
+                    certificate = { ...uploaded, resourceType }
+                } catch (uploadErr) {
+                    // Multer already wrote the file to disk; nothing to clean there.
+                    // Re-throw so the user knows the cert upload failed.
+                    throw new ApplicationError('Failed to upload certificate', 502)
+                }
+            }
+
+            // Push the new course onto the array. We use $push with $position
+            // = length so the new course is always at the end, and the
+            // returned index is `currentUser.courses.length` (the index of
+            // the freshly added entry). If the cert upload failed, we never
+            // reach this branch — the atomic guarantee.
+            const newCourse: Record<string, any> = { name: trimmedName }
+            if (certificate) newCourse.certificate = certificate
+
+            const updated = await this.userRepo.update({
+                filter: { _id: user._id },
+                data: { $push: { courses: newCourse } },
+                options: { returnDocument: 'after' },
+            })
+
+            const newIndex = (updated as any)?.courses?.length
+                ? (updated as any).courses.length - 1
+                : 0
+
+            return successHandler({
+                res,
+                status: 201,
+                message: 'Course added successfully',
+                data: {
+                    course: {
+                        index: newIndex,
+                        name: trimmedName,
+                        certificate: certificate ?? null,
+                    },
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
     getProfile = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { userId } = req.params
