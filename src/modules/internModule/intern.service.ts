@@ -14,6 +14,7 @@ import { internshipNotificationTemplate } from "../../utils/sendEmail/generateHt
 import { notificationEmitter } from "../../utils/notifications/notificationEvents";
 import { NotificationType } from "../../DB/types/notification.type";
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache";
+import { applyCompanyVirtuals } from "../../utils/companyVirtuals";
 
 export class InternService {
     private internRepo = new InternRepo
@@ -272,6 +273,10 @@ export class InternService {
                     }),
                     InternShipModel.countDocuments(filter),
                 ])
+                // Each item has a populated `companyId` subdoc — add
+                // `googleMapsUrl` so the frontend can deep-link to maps
+                // without a separate company fetch.
+                applyCompanyVirtuals(items)
                 return { internships: items, total: totalCount }
             })
 
@@ -312,6 +317,12 @@ export class InternService {
                     options: { populate: ["companyId"], lean: true },
                 }),
             )
+            if (internship) {
+                // The populated `companyId` is a lean Company POJO — add
+                // `googleMapsUrl` so the frontend can deep-link to maps
+                // without a separate company fetch.
+                applyCompanyVirtuals(internship)
+            }
             if (!internship) {
                 throw new NotFoundException("Internship not found")
             }

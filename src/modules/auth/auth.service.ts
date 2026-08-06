@@ -159,7 +159,7 @@ export class AuthService {
             if (user.isConfirmed) {
                 throw new ApplicationError("Email is already confirmed", 400)
             }
-            if (user.emailOtp.expiresAt.getTime() > Date.now()) {
+            if (new Date(user.emailOtp.expiresAt).getTime() > Date.now()) {
                 throw new ApplicationError("wait for 5 minutes", 400)
             }
             const subject = "Your OTP code"
@@ -192,7 +192,11 @@ export class AuthService {
                 throw new ApplicationError("Please confirm your email to proceed", 400)
             }
             // Guard against undefined passwordOtp on a fresh account.
-            const existingExpiry = user.passwordOtp?.expiresAt?.getTime() ?? 0
+            // `new Date(...)` so the comparison still works if the field is
+            // an ISO string (cache round-trip) instead of a Date.
+            const existingExpiry = user.passwordOtp?.expiresAt
+                ? new Date(user.passwordOtp.expiresAt).getTime()
+                : 0
             if (existingExpiry > Date.now()) {
                 throw new ApplicationError("wait for 5 minutes", 400)
             }
@@ -267,8 +271,15 @@ export class AuthService {
             if (!user) {
                 throw new NotFoundException('User not found')
             }
-            if (user.isChangeCredentialsUpdated && payload.iat < Math.floor(user.isChangeCredentialsUpdated.getTime() / 1000)) {
-                throw new ApplicationError('please login again', 400)
+            if (user.isChangeCredentialsUpdated) {
+                // Defensive: `user` here is fetched fresh (no cache round-trip),
+                // so `isChangeCredentialsUpdated` is a real Date. But if this
+                // path ever starts hitting the user cache, the field will come
+                // back as an ISO string. `new Date(x)` handles both shapes.
+                const changedAt = new Date(user.isChangeCredentialsUpdated).getTime()
+                if (payload.iat < Math.floor(changedAt / 1000)) {
+                    throw new ApplicationError('please login again', 400)
+                }
             }
             const tokens = generateLoginTokens(user._id.toString())
             return successHandler({ res, message: 'Tokens refreshed successfully', data: { tokens } })

@@ -11,6 +11,7 @@ import { UserRoleEnum } from "../../DB/types/user.type"
 import { notificationEmitter } from "../../utils/notifications/notificationEvents"
 import { NotificationType } from "../../DB/types/notification.type"
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache"
+import { applyCompanyVirtuals } from "../../utils/companyVirtuals"
 
 export class CompanyService {
     private companyRepo = new CompanyRepo()
@@ -138,6 +139,9 @@ export class CompanyService {
                     }),
                     companyModel.countDocuments(filter),
                 ])
+                // Mongoose 9 has no built-in lean virtuals — apply explicitly
+                // so cached responses still expose `googleMapsUrl`.
+                applyCompanyVirtuals(items)
                 return { companies: items, total: totalCount }
             })
 
@@ -179,6 +183,11 @@ export class CompanyService {
                     },
                 }),
             )
+            if (company) {
+                // Mongoose 9 has no built-in lean virtuals — apply explicitly
+                // so cached detail responses still expose `googleMapsUrl`.
+                applyCompanyVirtuals(company)
+            }
             if (
                 !company ||
                 (company as any).deletedAt ||
@@ -205,6 +214,11 @@ export class CompanyService {
                     options: { select: "-legalAttachment", lean: true },
                 }),
             )
+            if (company) {
+                // Mongoose 9 has no built-in lean virtuals — apply explicitly
+                // so cached byName responses still expose `googleMapsUrl`.
+                applyCompanyVirtuals(company)
+            }
             if (
                 !company ||
                 (company as any).deletedAt ||

@@ -197,7 +197,13 @@ const options = {
             workingTime: { type: 'string', enum: ['full-time', 'part-time'] },
             softSkills: { type: 'array', items: { type: 'string' }, example: ['teamwork', 'communication'] },
             technicalSkills: { type: 'array', items: { type: 'string' }, example: ['JavaScript', 'Node.js'] },
-            companyId: { type: 'string', example: '60d0fe4f5311236168a109ca' },
+            companyId: {
+              description: 'On the list endpoint this is the raw ObjectId string. On the detail endpoint (`GET /internships/:id`) it is populated with the full Company document, including `googleMapsUrl` when the company has coordinates.',
+              oneOf: [
+                { type: 'string', example: '60d0fe4f5311236168a109ca' },
+                { $ref: '#/components/schemas/Company' },
+              ],
+            },
             addedBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },
             updatedBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },
             closed: { type: 'boolean', example: false },

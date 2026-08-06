@@ -73,8 +73,16 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
     if (!user.isConfirmed) {
         throw new NotConfirmedException("Please confirm your email to proceed")
     }
-    if (user.isChangeCredentialsUpdated?.getTime()! > payload.iat * 1000) {
-        throw new ApplicationError("please login again", 400)
+    // `user` comes from `cacheWrap` (Upstash / in-memory Map), so it has
+    // been JSON-serialised and back. JSON has no Date type — the field
+    // comes back as an ISO string, NOT a Date object, so `.getTime()`
+    // blows up. `new Date(x)` is a no-op for an existing Date and parses
+    // an ISO string safely, so this handles both shapes.
+    if (user.isChangeCredentialsUpdated) {
+        const changedAt = new Date(user.isChangeCredentialsUpdated).getTime()
+        if (changedAt > payload.iat * 1000) {
+            throw new ApplicationError("please login again", 400)
+        }
     }
     return { user, payload }
 }
