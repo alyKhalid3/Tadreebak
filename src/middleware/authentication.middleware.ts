@@ -4,6 +4,7 @@ import { UserRepo } from "../DB/repos/user.repo";
 import { ApplicationError, InvalidTokenException, NotConfirmedException, NotFoundException } from "../utils/error";
 import { verifyJwt } from "../utils/jwt";
 import jsonwebtoken from "jsonwebtoken";
+import { cacheWrap } from "../cache/cache";
 
 export enum tokenTypeEnum {
     ACCESS = 'access',
@@ -57,7 +58,15 @@ export const decodeToken = async ({ authorization, tokenType = tokenTypeEnum.ACC
     if (!payload.iat || !payload.id) {
         throw new InvalidTokenException("Invalid token payload");
     }
-    const user = await userRepo.findById({ id: payload.id })
+    // Cache the user lookup — every authenticated request does this DB hit
+    // otherwise. 60s TTL bounds the staleness window for sensitive fields
+    // (role, isConfirmed) that change via profile updates; those code paths
+    // bust the cache explicitly.
+    const user = await cacheWrap(
+        `user:${payload.id}`,
+        60,
+        () => userRepo.findById({ id: payload.id }),
+    )
     if (!user) {
         throw new NotFoundException("User not found");
     }

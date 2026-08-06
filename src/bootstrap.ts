@@ -11,6 +11,7 @@ import { swaggerSpec } from './config/swagger';
 import helmet from 'helmet';
 import cors from 'cors';
 import { globalLimiter } from './middleware/rateLimiter';
+import { closeRedis, isRedisHealthy } from './cache/redis';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,7 +141,8 @@ export const bootstrap = async () => {
      *     summary: Liveness probe
      *     description: |
      *       Public health check. Use this for uptime monitoring and load-balancer
-     *       probes. Returns the process uptime in seconds.
+     *       probes. Returns the process uptime in seconds and the current
+     *       status of the Redis cache (when one is configured).
      *     tags: [System]
      *     responses:
      *       200:
@@ -152,8 +154,15 @@ export const bootstrap = async () => {
      *               properties:
      *                 ok: { type: boolean, example: true }
      *                 uptime: { type: number, description: "Process uptime in seconds" }
+     *                 redis: { type: string, enum: [up, down, disabled], description: "Redis cache status" }
      */
-    app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+    app.get('/health', (req, res) => {
+        const redisConfigured = !!(process.env.UPSTASH_REDIS_REST_URL?.trim() && process.env.UPSTASH_REDIS_REST_TOKEN?.trim())
+        const redisStatus = !redisConfigured
+            ? "disabled"
+            : (isRedisHealthy() ? "up" : "down")
+        res.json({ ok: true, uptime: process.uptime(), redis: redisStatus })
+    });
     app.use('/api/v1', baseRouter)
 
     // M8: in production the swagger UI leaks the entire route surface
@@ -228,6 +237,11 @@ export const bootstrap = async () => {
             await mongoose.default.disconnect();
         } catch (err) {
             console.error('Error disconnecting MongoDB:', err);
+        }
+        try {
+            await closeRedis();
+        } catch (err) {
+            console.error('Error closing Redis:', err);
         }
         process.exit(0);
     };

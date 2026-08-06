@@ -17,6 +17,7 @@ import {
     buildPaymentUrl,
     verifyCallbackHmac,
 } from "../../utils/paymob/paymob.service";
+import { cacheDel, cacheFlushPrefix } from "../../cache/cache";
 
 export class BillingService {
     private companyRepo = new CompanyRepo()
@@ -179,6 +180,11 @@ export class BillingService {
                         { _id: paymentOrder.companyId },
                         { $inc: { internshipCredits: paymentOrder.credits } },
                     )
+                    // Cached company detail + listing now show the new credit total.
+                    await Promise.all([
+                        cacheDel(`companies:detail:${paymentOrder.companyId}`),
+                        cacheFlushPrefix('companies:list'),
+                    ])
                 }
             } else {
                 await this.paymentOrderRepo.update({

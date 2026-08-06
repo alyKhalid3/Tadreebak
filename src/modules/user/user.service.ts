@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express'
 import { ApplicationError } from '../../utils/error'
 import { successHandler } from '../../utils/successHandler'
 import { toSafeUser } from '../../utils/safeUser';
+import { cacheDel, cacheFlushPrefix } from '../../cache/cache';
 
 import { CompanyRepo } from '../../DB/repos/company.repo';
 import { NotFoundException } from '../../utils/error';
@@ -290,6 +291,10 @@ export class UserService {
             }
             // Project to the safe DTO so we don't return password hash / OTPs.
             const safe = toSafeUser(updatedUser.toObject ? updatedUser.toObject() : updatedUser)
+            // Bust the cached user so the next request sees the new fields
+            // (skills, bio, headline, etc).
+            await cacheDel(`user:${userId}`)
+
             return successHandler({ res, message: 'Profile updated successfully', data: { user: safe } })
         } catch (error) {
             next(error)
@@ -303,6 +308,8 @@ export class UserService {
                 throw new ApplicationError('You can only delete your own account', 403)
             }
             await this.userRepo.deleteMany({ filter: { _id: mongoose.Types.ObjectId.createFromHexString(userId as string) } })
+            await cacheDel(`user:${userId}`)
+
             return successHandler({ res, message: 'Account deleted successfully' })
         } catch (error) {
             next(error)

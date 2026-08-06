@@ -13,6 +13,7 @@ import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { internshipNotificationTemplate } from "../../utils/sendEmail/generateHtml";
 import { notificationEmitter } from "../../utils/notifications/notificationEvents";
 import { NotificationType } from "../../DB/types/notification.type";
+import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache";
 
 export class InternService {
     private internRepo = new InternRepo
@@ -43,6 +44,10 @@ export class InternService {
                 { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
                 { $inc: { internshipCredits: -1 } },
             )
+            if (decrement.modifiedCount > 0) {
+                // Credits changed — bust the company cache.
+                await cacheDel(`companies:detail:${companyId}`)
+            }
             if (!decrement || decrement.modifiedCount === 0) {
                 throw new ApplicationError(
                     "You have reached your internship posting limit. Purchase a plan to post more internships.",
@@ -143,6 +148,11 @@ export class InternService {
                 }
             })()
 
+            // A new internship shows up in every filtered list — flush them.
+            // The detail cache is keyed by id so it can't collide with the
+            // brand-new one, no need to DEL it.
+            await cacheFlushPrefix('internships:list')
+
             return successHandler({ res, message: "Internship created successfully", data: { internship }, status: 201 })
         } catch (error) {
             next(error)
@@ -171,6 +181,14 @@ export class InternService {
                 data: { ...data, updatedBy: user._id },
                 options: { returnDocument: "after" },
             })
+
+            // Invalidate the detail cache for this internship and every
+            // list cache (a changed title/description/closed status affects
+            // any filtered listing).
+            await Promise.all([
+                cacheDel(`internships:detail:${internId}`),
+                cacheFlushPrefix('internships:list'),
+            ])
 
             return successHandler({ res, message: "Internship updated successfully", data: { internship: updated } })
         } catch (error) {
@@ -211,6 +229,12 @@ export class InternService {
                 session.endSession()
             }
 
+            // Detail + every filtered listing.
+            await Promise.all([
+                cacheDel(`internships:detail:${internId}`),
+                cacheFlushPrefix('internships:list'),
+            ])
+
             return successHandler({ res, message: "Internship deleted successfully" })
         } catch (error) {
             next(error)
@@ -234,10 +258,22 @@ export class InternService {
             const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
             const skip = (pageNum - 1) * limitNum
 
-            const [internships, total] = await Promise.all([
-                this.internRepo.find({ filter, options: { skip, limit: limitNum, sort: { createdAt: -1 } } }),
-                InternShipModel.countDocuments(filter),
-            ])
+            // Cache key covers every filter dimension so a search for
+            // "frontend internships in Cairo" doesn't return the cache for
+            // "backend internships in Alexandria". TTL is 5 min — these
+            // listings change slowly (creating an internship is rare
+            // compared to listing them).
+            const cacheKey = `internships:list:${JSON.stringify({ filter, pageNum, limitNum })}`
+            const { internships, total } = await cacheWrap(cacheKey, 300, async () => {
+                const [items, totalCount] = await Promise.all([
+                    this.internRepo.find({
+                        filter,
+                        options: { skip, limit: limitNum, sort: { createdAt: -1 }, lean: true },
+                    }),
+                    InternShipModel.countDocuments(filter),
+                ])
+                return { internships: items, total: totalCount }
+            })
 
             return successHandler({
                 res,
@@ -265,7 +301,17 @@ export class InternService {
                 throw new ApplicationError("Invalid internship id", 400)
             }
 
-            const internship = await this.internRepo.findById({ id: internId, options: { populate: ["companyId"] } })
+            // Cache the populated internship for 5 min. We key on the raw id
+            // (not the populated form) so cache hits survive Mongoose refactor
+            // changes. Lean so the result is JSON-serialisable.
+            const internship = await cacheWrap(
+                `internships:detail:${internId}`,
+                300,
+                () => this.internRepo.findById({
+                    id: internId,
+                    options: { populate: ["companyId"], lean: true },
+                }),
+            )
             if (!internship) {
                 throw new NotFoundException("Internship not found")
             }

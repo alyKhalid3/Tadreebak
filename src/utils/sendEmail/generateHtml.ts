@@ -191,7 +191,7 @@ export const acceptanceTemplate = ({ studentName, internshipTitle, companyName, 
 export const internshipNotificationTemplate = ({ studentName, internshipTitle, universityName, companyName, track, location, link, subject }: { studentName: string; internshipTitle: string; universityName?: string; companyName?: string; track?: string; location?: string; link?: string; subject?: string }) => {
   const spotlightName = universityName?.trim() || companyName?.trim();
   const detailLine = spotlightName
-    ? `<p><strong>${escapeHtml(internshipTitle)}</strong> at <strong>${escapeHtml(spotlightName)}</strong></p>`
+    ? `<p><strong>${escapeHtml(internshipTitle)}</strong> for <strong>${escapeHtml(spotlightName)}</strong> students</p>`
     : `<p><strong>${escapeHtml(internshipTitle)}</strong></p>`;
 
   return `<!DOCTYPE html>

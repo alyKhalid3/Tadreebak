@@ -9,6 +9,14 @@ import rateLimit, { type Options } from "express-rate-limit";
  */
 const passthrough = (_req: unknown, _res: unknown, next: () => void) => next();
 
+/**
+ * Shared rate limiter. When UPSTASH_REDIS_REST_URL is set, the per-process
+ * in-memory store is acceptable for a single-instance dev / staging
+ * deploy. For multi-instance prod you'd want `rate-limit-redis` with an
+ * ioredis backend — but the Upstash REST client isn't a drop-in for
+ * ioredis's command surface, so we leave the shared store out until
+ * the project moves off Upstash REST to a standard Redis endpoint.
+ */
 const buildLimiter = (overrides: Partial<Options>) => {
     if (process.env.RATE_LIMIT_ENABLED !== "true") {
         return passthrough as unknown as ReturnType<typeof rateLimit>;

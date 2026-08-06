@@ -10,6 +10,7 @@ import { companyModel } from "../../DB/models/company.model"
 import { UserRoleEnum } from "../../DB/types/user.type"
 import { notificationEmitter } from "../../utils/notifications/notificationEvents"
 import { NotificationType } from "../../DB/types/notification.type"
+import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache"
 
 export class CompanyService {
     private companyRepo = new CompanyRepo()
@@ -47,7 +48,17 @@ export class CompanyService {
                     filter: { _id: user._id },
                     data: { role: UserRoleEnum.COMPANY_OWNER }
                 })
+                // Role flipped. The cached user still says `student` and
+                // would fail the new AuthZMiddleware checks on intern /
+                // billing routes until the 60s TTL expires.
+                await cacheDel(`user:${user._id.toString()}`)
             }
+
+            // A new approved company shows up in the listing; flush it.
+            // If the company is created but not yet approved, this is a
+            // wasted flush — acceptable since the listing is filtered by
+            // approvedByAdmin anyway.
+            await cacheFlushPrefix('companies:list')
 
             return successHandler({ res, message: "Company created successfully", data: { company: createdCompany } })
 
@@ -82,6 +93,14 @@ export class CompanyService {
                 },
                 options: { returnDocument: "after" },
             })
+            // Name change invalidates the byName cache; everything else
+            // invalidates the detail + list caches.
+            await Promise.all([
+                cacheDel(`companies:detail:${companyId}`),
+                cacheDel(`companies:byName:${(updatedCompany as any)?.name}`),
+                cacheFlushPrefix('companies:list'),
+            ])
+
             return successHandler({ res, message: "Company updated successfully", data: { company: updatedCompany } })
         } catch (error) {
             next(error)
@@ -100,18 +119,27 @@ export class CompanyService {
             const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
             const skip = (pageNum - 1) * limitNum
 
-            const [companies, total] = await Promise.all([
-                this.companyRepo.find({
-                    filter, options: {
-                        skip,
-                        limit: limitNum,
-                        sort: { createdAt: -1 },
-                        populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
-                        select: "-legalAttachment -companyEmail -approvedByAdmin" // Exclude legalAttachment from the response
-                    }
-                }),
-                companyModel.countDocuments(filter),
-            ])
+            // Cache for 5 min — company listings change infrequently
+            // (admin approval, new company creation, ban). The filter is
+            // part of the key so search-by-name doesn't share a cache slot
+            // with the unfiltered listing.
+            const cacheKey = `companies:list:${JSON.stringify({ filter, pageNum, limitNum })}`
+            const { companies, total } = await cacheWrap(cacheKey, 300, async () => {
+                const [items, totalCount] = await Promise.all([
+                    this.companyRepo.find({
+                        filter, options: {
+                            skip,
+                            limit: limitNum,
+                            sort: { createdAt: -1 },
+                            populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                            select: "-legalAttachment -companyEmail -approvedByAdmin",
+                            lean: true,
+                        }
+                    }),
+                    companyModel.countDocuments(filter),
+                ])
+                return { companies: items, total: totalCount }
+            })
 
             return successHandler({
                 res,
@@ -138,12 +166,24 @@ export class CompanyService {
                 throw new ApplicationError("Invalid company id", 400)
             }
 
-            const company = await this.companyRepo.findOne({ filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) }, options: { populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }] } })
+            // 5 min. The billing/credits endpoint uses a different key
+            // (companies:credits:{id}) so this only busts on profile edits.
+            const company = await cacheWrap(
+                `companies:detail:${companyId}`,
+                300,
+                () => this.companyRepo.findOne({
+                    filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                    options: {
+                        populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                        lean: true,
+                    },
+                }),
+            )
             if (
                 !company ||
-                company.deletedAt ||
-                company.bannedAt ||
-                !company.approvedByAdmin
+                (company as any).deletedAt ||
+                (company as any).bannedAt ||
+                !(company as any).approvedByAdmin
             ) {
                 throw new NotFoundException("Company not found")
             }
@@ -157,9 +197,20 @@ export class CompanyService {
         try {
             const { name } = req.params
 
-
-            const company = await this.companyRepo.findOne({ filter: { name: name as string }, options: { select: "-legalAttachment" } })
-            if (!company || company.deletedAt || company.bannedAt || !company.approvedByAdmin) {
+            const company = await cacheWrap(
+                `companies:byName:${name}`,
+                300,
+                () => this.companyRepo.findOne({
+                    filter: { name: name as string },
+                    options: { select: "-legalAttachment", lean: true },
+                }),
+            )
+            if (
+                !company ||
+                (company as any).deletedAt ||
+                (company as any).bannedAt ||
+                !(company as any).approvedByAdmin
+            ) {
                 throw new NotFoundException("Company not found")
             }
 
@@ -289,6 +340,13 @@ export class CompanyService {
                 data: { bannedAt: new Date() },
             })
 
+            // Banned companies disappear from the listing.
+            await Promise.all([
+                cacheDel(`companies:detail:${companyId}`),
+                cacheDel(`companies:byName:${company.name}`),
+                cacheFlushPrefix('companies:list'),
+            ])
+
             notificationEmitter.publish(NotificationType.COMPANY_BANNED, {
                 recipient: company.createdBy.toString(),
                 data: { companyId: company._id.toString(), companyName: company.name },
@@ -321,6 +379,13 @@ export class CompanyService {
                 data: { bannedAt: null },
             })
 
+            // An unbanned company reappears in the public listing.
+            await Promise.all([
+                cacheDel(`companies:detail:${companyId}`),
+                cacheDel(`companies:byName:${company.name}`),
+                cacheFlushPrefix('companies:list'),
+            ])
+
             notificationEmitter.publish(NotificationType.COMPANY_UNBANNED, {
                 recipient: company.createdBy.toString(),
                 data: { companyId: company._id.toString(), companyName: company.name },
@@ -350,6 +415,13 @@ export class CompanyService {
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: { approvedByAdmin: true }
             })
+
+            // Approving a company makes it visible in the public listing.
+            await Promise.all([
+                cacheDel(`companies:detail:${companyId}`),
+                cacheDel(`companies:byName:${company.name}`),
+                cacheFlushPrefix('companies:list'),
+            ])
 
             notificationEmitter.publish(NotificationType.COMPANY_APPROVED, {
                 recipient: company.createdBy.toString(),

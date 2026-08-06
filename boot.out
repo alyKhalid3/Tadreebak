@@ -1,3 +1,3 @@
-◇ injected env (21) from src\config\.env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (24) from src\config\.env // tip: ⌘ suppress logs { quiet: true }
 Connected to MongoDB
-Server is running on port 3977
+Server is running on port 3968

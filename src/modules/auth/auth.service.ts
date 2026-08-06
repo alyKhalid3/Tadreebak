@@ -14,6 +14,7 @@ import { toSafeUser } from '../../utils/safeUser';
 import jsonwebtoken from 'jsonwebtoken';
 import { payload as JwtPayload } from '../../middleware/authentication.middleware';
 import { verifyOtpAsync, throwForOtpResult } from '../../utils/otp';
+import { cacheDel } from '../../cache/cache';
 
 export const generateLoginTokens = (userId: string) => {
     const accessToken = createJwt({ id: userId }, process.env.ACCESS_TOKEN_SECRET as string, { expiresIn: '1h' })
@@ -83,6 +84,10 @@ export class AuthService {
                 filter: { email },
                 data: { isConfirmed: true, emailOtp: { otp: '', expiresAt: new Date(), attempts: 0 } }
             })
+            // isConfirmed flipped from false to true — the next request
+            // through auth() must see the new value, not a cached false.
+            if (user._id) await cacheDel(`user:${user._id.toString()}`)
+
             return successHandler({ res, message: "Email confirmed successfully" })
         } catch (error) {
             next(error)
@@ -231,6 +236,10 @@ export class AuthService {
                     isChangeCredentialsUpdated: new Date(),
                 }
             })
+            // The reset invalidates all existing JWTs (isChangeCredentialsUpdated).
+            // Bust the cache so the next auth() call hits the DB.
+            if (user._id) await cacheDel(`user:${user._id.toString()}`)
+
             return successHandler({ res, message: "Password Changed successfully" })
         } catch (error) {
             next(error)
@@ -274,6 +283,9 @@ export class AuthService {
                 filter: { _id: user._id },
                 data: { isChangeCredentialsUpdated: new Date() }
             })
+            // isChangeCredentialsUpdated just moved; the cached copy is now
+            // stale. Force a DB fetch on the next auth() call.
+            await cacheDel(`user:${user._id.toString()}`)
             return successHandler({ res, message: 'Logged out successfully' })
         } catch (error) {
             next(error)
@@ -297,6 +309,7 @@ export class AuthService {
                 filter: { _id: user._id },
                 data: { password: await createHash({ text: newPassword }), isChangeCredentialsUpdated: new Date() }
             })
+            await cacheDel(`user:${user._id.toString()}`)
             return successHandler({ res, message: 'Password changed successfully' })
         } catch (error) {
             next(error)
@@ -353,6 +366,9 @@ export class AuthService {
                     isChangeCredentialsUpdated: new Date()
                 }
             })
+            // Email flipped + isChangeCredentialsUpdated moved. Both are
+            // critical fields; force a DB read next time.
+            await cacheDel(`user:${user._id.toString()}`)
             return successHandler({ res, message: 'Email changed successfully' })
         } catch (error) {
             next(error)
