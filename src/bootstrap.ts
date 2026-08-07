@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { globalLimiter } from './middleware/rateLimiter';
 import { closeRedis, isRedisHealthy } from './cache/redis';
+import { Sentry } from './instrument';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,6 +113,9 @@ export const bootstrap = async () => {
     app.use(express.json());
     app.use(helmet());
 
+    // Sentry request handling is wired up via the `expressIntegration()`
+    // in src/instrument.ts — no separate middleware needed in v10.
+
     // Skip the global limiter on the docs + health endpoints so the swagger
     // UI assets are always reachable, then apply it to everything else.
     app.use((req: Request, res: Response, next: NextFunction) => {
@@ -203,6 +207,21 @@ export const bootstrap = async () => {
             res.type('html').send(swaggerUiHtml);
         });
     }
+
+    // Dev-only smoke route to verify Sentry is wired up. The instruction set
+    // asked for a `/debug-sentry` route — guard it behind NODE_ENV so it can
+    // never ship to production (otherwise it becomes a trivial DoS surface).
+    if (process.env.NODE_ENV !== 'production') {
+        app.get('/debug-sentry', () => {
+            throw new Error('Sentry smoke test (intentional)');
+        });
+    }
+
+    // Sentry error handler — captures every unhandled error in the chain
+    // above and ships it. Must come BEFORE our custom error handler so the
+    // exception is reported before we format the HTTP response. v10 wraps
+    // the request handler + error handler in a single call.
+    Sentry.setupExpressErrorHandler(app);
 
     app.use((req: Request, res: Response) => {
         return res.status(404).json({ errMsg: 'Route not found', cause: 404 })
