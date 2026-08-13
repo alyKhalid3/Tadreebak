@@ -5,12 +5,19 @@ import { auth } from "../../middleware/authentication.middleware";
 import { AuthZMiddleware } from "../../middleware/authorization.middleware";
 import { UserRoleEnum } from "../../DB/types/user.type";
 import * as BillingValidation from "./billing.validation";
+import { requireBillingEnabled } from "../../utils/featureFlags";
 
 const billingService = new BillingService()
 
 // Company-scoped router — mounted at /company/:companyId/billing
 // Inherits :companyId via mergeParams.
 const billingRouter = Router({ mergeParams: true })
+
+// Gate every billing route with the BILLING_ENABLED flag. When disabled,
+// each route (and the Paymob webhook below) returns 503 immediately,
+// bypassing auth / validation / service. Set BILLING_ENABLED=false in env
+// to take the whole billing module offline (payment + credit top-up).
+billingRouter.use(requireBillingEnabled)
 
 /**
  * @swagger
@@ -172,6 +179,11 @@ billingRouter.post('/payment/confirm', auth(), AuthZMiddleware([UserRoleEnum.COM
 // Public webhook router — mounted at /webhooks/paymob
 // No auth; Paymob calls this server-to-server after a payment attempt.
 const billingWebhookRouter = Router()
+
+// Same gate as the user-facing routes. An in-flight Paymob callback
+// during a billing outage must NOT credit a company — even if the HMAC
+// is valid, the user-facing flow is paused.
+billingWebhookRouter.use(requireBillingEnabled)
 
 /**
  * @swagger

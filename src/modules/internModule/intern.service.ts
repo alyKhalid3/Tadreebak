@@ -15,6 +15,7 @@ import { notificationEmitter } from "../../utils/notifications/notificationEvent
 import { NotificationType } from "../../DB/types/notification.type";
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache";
 import { applyCompanyVirtuals } from "../../utils/companyVirtuals";
+import { isBillingEnabled } from "../../utils/featureFlags";
 
 export class InternService {
     private internRepo = new InternRepo
@@ -28,7 +29,12 @@ export class InternService {
 
             const company = await assertOwnedCompany(companyId, user._id.toString())
 
-            if (company.internshipCredits <= 0) {
+            // BILLING_ENABLED gate: when billing is disabled, companies can
+            // post unlimited internships without spending credits. Skip both
+            // the "do you have credits?" check and the atomic decrement.
+            const billingEnabled = isBillingEnabled()
+
+            if (billingEnabled && company.internshipCredits <= 0) {
                 throw new ApplicationError(
                     "You have reached your internship posting limit. Purchase a plan to post more internships.",
                     402,
@@ -41,19 +47,21 @@ export class InternService {
             // a conditional $inc — which let two parallel requests both pass
             // the check and both create an internship (only the first $inc
             // succeeded, so the second one was a free posting).
-            const decrement = await companyModel.updateOne(
-                { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
-                { $inc: { internshipCredits: -1 } },
-            )
-            if (decrement.modifiedCount > 0) {
-                // Credits changed — bust the company cache.
-                await cacheDel(`companies:detail:${companyId}`)
-            }
-            if (!decrement || decrement.modifiedCount === 0) {
-                throw new ApplicationError(
-                    "You have reached your internship posting limit. Purchase a plan to post more internships.",
-                    402,
+            if (billingEnabled) {
+                const decrement = await companyModel.updateOne(
+                    { _id: new mongoose.Types.ObjectId(companyId), internshipCredits: { $gt: 0 } },
+                    { $inc: { internshipCredits: -1 } },
                 )
+                if (decrement.modifiedCount > 0) {
+                    // Credits changed — bust the company cache.
+                    await cacheDel(`companies:detail:${companyId}`)
+                }
+                if (!decrement || decrement.modifiedCount === 0) {
+                    throw new ApplicationError(
+                        "You have reached your internship posting limit. Purchase a plan to post more internships.",
+                        402,
+                    )
+                }
             }
 
             let internship
@@ -76,12 +84,15 @@ export class InternService {
                     }
                 })
             } catch (err) {
-                // Refund the credit we just spent — otherwise a transient
-                // Mongo blip or a duplicate-index violation eats user money.
-                await companyModel.updateOne(
-                    { _id: new mongoose.Types.ObjectId(companyId) },
-                    { $inc: { internshipCredits: 1 } },
-                )
+                // Refund the credit we just spent — only if we actually
+                // spent one. When billing is disabled there is nothing to
+                // refund, so the +1 is gated by the same flag.
+                if (billingEnabled) {
+                    await companyModel.updateOne(
+                        { _id: new mongoose.Types.ObjectId(companyId) },
+                        { $inc: { internshipCredits: 1 } },
+                    )
+                }
                 throw err
             }
 

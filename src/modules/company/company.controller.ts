@@ -366,6 +366,34 @@ router.post(
  *     responses:
  *       200:
  *         description: Pending companies fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     companies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         allOf:
+ *                           - $ref: '#/components/schemas/Company'
+ *                           - type: object
+ *                             properties:
+ *                               legalAttachment:
+ *                                 type: object
+ *                                 description: Cloudinary reference of the legal attachment used to verify the company.
+ *                                 properties:
+ *                                   public_id:
+ *                                     type: string
+ *                                   secure_url:
+ *                                     type: string
+ *                               legalAttachmentUrl:
+ *                                 type: string
+ *                                 description: Authenticated file-proxy URL; fetch it with the bearer token to open the PDF inline in the browser (same mechanism as the CV/resume).
+ *                                 example: /api/v1/file-proxy/legal-attachment.pdf?url=<encoded cloudinary url>
  *       403:
  *         description: Admin role required
  */

@@ -172,13 +172,16 @@ export class CompanyService {
 
             // 5 min. The billing/credits endpoint uses a different key
             // (companies:credits:{id}) so this only busts on profile edits.
-            const company = await cacheWrap(
+const company = await cacheWrap(
                 `companies:detail:${companyId}`,
                 300,
                 () => this.companyRepo.findOne({
                     filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                     options: {
                         populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                        // legalAttachment is sensitive verification material —
+                        // admin-only (see listPending). Never expose it publicly.
+                        select: "-legalAttachment",
                         lean: true,
                     },
                 }),
@@ -302,18 +305,35 @@ export class CompanyService {
             const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
             const skip = (pageNum - 1) * limitNum
 
-            const [companies, total] = await Promise.all([
-                this.companyRepo.find({
-                    filter,
-                    options: {
-                        skip,
-                        limit: limitNum,
-                        sort: { createdAt: -1 },
-                        populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
-                    },
-                }),
-                companyModel.countDocuments(filter),
-            ])
+            const companies = await this.companyRepo.find({
+                filter,
+                options: {
+                    skip,
+                    limit: limitNum,
+                    sort: { createdAt: -1 },
+                    // Admin needs the legal attachment to verify the company.
+                    // Explicit `+` keeps it even if the schema ever marks it
+                    // `select: false` for public endpoints.
+                    select: "+legalAttachment -companyEmail",
+                    populate: [{ path: "createdBy", select: "firstName lastName email profilePicture" }],
+                    lean: true,
+                },
+            })
+            const total = await companyModel.countDocuments(filter)
+
+            // Serve the attachment the same way the CV (resume) is served:
+            // through the authenticated file-proxy, which returns the PDF with
+            // Content-Type: application/pdf and `inline` disposition so it
+            // opens in the browser instead of downloading.
+            const origin = `${req.protocol}://${req.get('host')}`
+            for (const company of companies) {
+                const doc = company as any
+                if (doc?.legalAttachment?.secure_url) {
+                    doc.legalAttachmentUrl = `${origin}/api/v1/file-proxy/legal-attachment.pdf?url=${encodeURIComponent(doc.legalAttachment.secure_url)}`
+                }
+            }
+            // Keep `googleMapsUrl` on lean docs (same treatment as the public list).
+            applyCompanyVirtuals(companies)
 
             return successHandler({
                 res,

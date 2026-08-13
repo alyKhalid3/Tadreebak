@@ -7,7 +7,7 @@
     "start": "tsx --import ./src/instrument.ts src/index.ts",
     "start:prod": "NODE_ENV=production tsx --import ./src/instrument.ts src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts"
+    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts src/utils/featureFlags.test.ts"
   },
   "keywords": [],
   "author": "",
