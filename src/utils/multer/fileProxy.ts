@@ -40,6 +40,12 @@ const EXTENSION_MAP: Record<string, string> = {
     webp: "image/webp",
 }
 
+// Build the URL used to open a Cloudinary raw file (PDF) inline through the
+// authenticated file-proxy — the same mechanism that serves CVs and legal
+// attachments. `origin` is the API base (protocol + host of the request).
+export const buildFileProxyUrl = (origin: string, filename: string, secureUrl: string): string =>
+    `${origin}/api/v1/file-proxy/${filename}?url=${encodeURIComponent(secureUrl)}`
+
 export const serveFileProxy = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const url = req.query.url as string | undefined

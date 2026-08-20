@@ -15,12 +15,23 @@ import { ApplicationStatus } from '../../DB/types/application.type';
 import { RatingModel } from '../../DB/models/rating.model';
 import { RatingFrom } from '../../DB/types/rating.type';
 import { UserRoleEnum } from '../../DB/types/user.type';
+import { buildFileProxyUrl } from '../../utils/multer/fileProxy';
 
 
 export class UserService {
     constructor() { }
     private userRepo = new UserRepo()
     private companyRepo = new CompanyRepo() // to avoid circular dependency between user and company repos as company repo needs user repo to update the company employees
+
+    // PDF certificates are raw Cloudinary files without an extension, so the
+    // browser would download them instead of opening inline. Serve them through
+    // the authenticated file-proxy — the same mechanism that opens CVs.
+    private certWithUrl(certificate: { public_id: string; secure_url: string; resourceType: 'image' | 'raw' }, origin: string) {
+        if (certificate.resourceType === 'raw') {
+            return { ...certificate, certificateUrl: buildFileProxyUrl(origin, 'course-certificate.pdf', certificate.secure_url) }
+        }
+        return certificate
+    }
 
     private async buildStudentExperience(userId: string) {
         const completedApplications = await ApplicationModel.find({
@@ -155,10 +166,11 @@ export class UserService {
                 data: { [`courses.${index}.certificate`]: { public_id, secure_url, resourceType } } as any,
             })
 
+            const origin = `${req.protocol}://${req.get('host')}`
             return successHandler({
                 res,
                 message: 'Course certificate uploaded successfully',
-                data: { certificate: { public_id, secure_url, resourceType } },
+                data: { certificate: this.certWithUrl({ public_id, secure_url, resourceType }, origin) },
             })
         } catch (error) {
             next(error)
@@ -230,6 +242,7 @@ export class UserService {
                 ? (updated as any).courses.length - 1
                 : 0
 
+            const origin = `${req.protocol}://${req.get('host')}`
             return successHandler({
                 res,
                 status: 201,
@@ -238,7 +251,7 @@ export class UserService {
                     course: {
                         index: newIndex,
                         name: trimmedName,
-                        certificate: certificate ?? null,
+                        certificate: certificate ? this.certWithUrl(certificate, origin) : null,
                     },
                 },
             })
@@ -262,6 +275,15 @@ export class UserService {
             // Project to a safe DTO so we never leak password hash, OTPs, etc.
             const safe = toSafeUser(user.toObject()) as Record<string, any>
             safe.experience = experience
+            // PDF certificates open through the file-proxy (same as CVs).
+            const origin = `${req.protocol}://${req.get('host')}`
+            if (Array.isArray(safe.courses)) {
+                for (const course of safe.courses) {
+                    if (course?.certificate?.resourceType === 'raw' && course.certificate.secure_url) {
+                        course.certificate.certificateUrl = buildFileProxyUrl(origin, 'course-certificate.pdf', course.certificate.secure_url)
+                    }
+                }
+            }
             return successHandler({ res, data: { user: safe } })
         } catch (error) {
             next(error)

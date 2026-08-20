@@ -265,6 +265,23 @@ router.post(userRoutes.uploadResume, auth(), uploadFile({ fileType: fileTypes.pd
  *     responses:
  *       200:
  *         description: Course certificate uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     certificate:
+ *                       type: object
+ *                       properties:
+ *                         public_id: { type: string }
+ *                         secure_url: { type: string }
+ *                         resourceType: { type: string, enum: [image, raw] }
+ *                         certificateUrl:
+ *                           type: string
+ *                           description: Authenticated file-proxy URL (PDF certificates only); fetch it with the bearer token to open the PDF inline, same as the CV/resume.
  *       400:
  *         description: Invalid course index / file is required / unsupported file type
  *       404:
@@ -332,6 +349,9 @@ router.post(
  *                             public_id: { type: string }
  *                             secure_url: { type: string }
  *                             resourceType: { type: string, enum: [image, raw] }
+ *                             certificateUrl:
+ *                               type: string
+ *                               description: Authenticated file-proxy URL (PDF certificates only); fetch it with the bearer token to open the PDF inline in the browser, same as the CV/resume.
  *                 msg: { type: string }
  *       400:
  *         description: Missing/invalid name or unsupported file type
