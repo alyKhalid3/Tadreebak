@@ -253,6 +253,64 @@ export class InternService {
         }
     }
 
+    // Shared implementation for close/reopen. Ownership is checked first,
+    // then the flip happens as a single conditional update on the CURRENT
+    // state (`closed: !closed`), so two racing close requests can't both
+    // succeed — the loser gets null back and we report 400.
+    private changeClosedState = async (internId: string, user: any, closed: boolean) => {
+        if (!isObjectIdOrHexString(internId)) {
+            throw new ApplicationError("Invalid internship id", 400)
+        }
+
+        const internship = await this.internRepo.findById({ id: internId })
+        if (!internship) {
+            throw new NotFoundException("Internship not found")
+        }
+
+        await assertOwnedCompany(internship.companyId.toString(), user._id.toString())
+
+        const updated = await this.internRepo.update({
+            filter: {
+                _id: mongoose.Types.ObjectId.createFromHexString(internId),
+                closed: !closed,
+            },
+            data: { closed, updatedBy: user._id },
+            options: { returnDocument: "after" },
+        })
+        if (!updated) {
+            throw new ApplicationError(
+                closed ? "Internship is already closed" : "Internship is already open",
+                400,
+            )
+        }
+
+        // Closed status changes visibility in every listing.
+        await Promise.all([
+            cacheDel(`internships:detail:${internId}`),
+            cacheFlushPrefix('internships:list'),
+        ])
+
+        return updated
+    }
+
+    close = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const updated = await this.changeClosedState(req.params.internId as string, res.locals.user, true)
+            return successHandler({ res, message: "Internship closed successfully", data: { internship: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    reopen = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const updated = await this.changeClosedState(req.params.internId as string, res.locals.user, false)
+            return successHandler({ res, message: "Internship reopened successfully", data: { internship: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
     list = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { type, location, companyId, title, closed, page = "1", limit = "10" } = req.query as Record<string, string | undefined>

@@ -19,6 +19,7 @@ export const userRoutes = {
     uploadResume: '/upload/resume',
     uploadCourseCertificate: '/upload/course-certificate/:courseIndex',
     addCourse: '/courses',
+    updateCourse: '/courses/:courseIndex',
     myApplications: '/:userId/applications',
     getProfile: '/:userId',
     update: '/:userId',
@@ -365,6 +366,84 @@ router.post(
     auth(),
     uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
     userService.addCourse
+)
+
+/**
+ * @swagger
+ * /user/courses/{courseIndex}:
+ *   patch:
+ *     summary: Update one of the user's courses (rename and/or replace certificate)
+ *     description: |
+ *       Updates the course at `courseIndex` in the authenticated user's
+ *       `courses` array. Both fields are optional — send only what changes.
+ *       Replacing the certificate uploads the new asset first and destroys
+ *       the old Cloudinary file afterwards, so a failed upload leaves the
+ *       course untouched. Returns 404 when no course exists at that index.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseIndex
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 description: New course name (optional)
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Replacement certificate — image or PDF, max 2 MB (optional)
+ *     responses:
+ *       200:
+ *         description: Course updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     course:
+ *                       type: object
+ *                       properties:
+ *                         index: { type: integer }
+ *                         name: { type: string }
+ *                         certificate:
+ *                           type: object
+ *                           nullable: true
+ *                           properties:
+ *                             public_id: { type: string }
+ *                             secure_url: { type: string }
+ *                             resourceType: { type: string, enum: [image, raw] }
+ *                             certificateUrl:
+ *                               type: string
+ *                               description: Authenticated file-proxy URL (PDF certificates only); fetch it with the bearer token to open the PDF inline, same as the CV/resume.
+ *                 msg: { type: string }
+ *       400:
+ *         description: Invalid course index / invalid name / nothing to update / unsupported file type
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       404:
+ *         description: User or course not found
+ */
+router.patch(
+    userRoutes.updateCourse,
+    auth(),
+    uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
+    userService.updateCourse
 )
 
 /**

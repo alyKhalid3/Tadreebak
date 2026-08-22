@@ -438,13 +438,20 @@ export class ApplicationService {
             const preKnowledge = internship.preKnowledge ?? []
             const studentName = student.firstName
             const subject = `Congratulations! You've been accepted for ${internship.title}`
-            const html = acceptanceTemplate({
+            // Optional personal note from the company. exactOptionalPropertyTypes
+            // forbids assigning `undefined`, so only set it when present.
+            const message = typeof (req.body as Record<string, any>)?.message === 'string'
+                ? (req.body as Record<string, any>).message.trim()
+                : undefined
+            const tmplArgs: Parameters<typeof acceptanceTemplate>[0] = {
                 studentName,
                 internshipTitle: internship.title,
                 companyName: company.name,
                 preKnowledge,
                 subject,
-            })
+            }
+            if (message) tmplArgs.message = message
+            const html = acceptanceTemplate(tmplArgs)
 
             emailEmitter.publish('send-email-acceptance', {
                 to: student.email,

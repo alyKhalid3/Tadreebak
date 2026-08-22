@@ -7,7 +7,7 @@ import { successHandler } from '../../utils/successHandler';
 import { compareHash, createHash } from '../../utils/hash';
 import { ProviderEnum } from '../../DB/types/user.type';
 import { createJwt, verifyJwt } from '../../utils/jwt';
-import { template } from '../../utils/sendEmail/generateHtml';
+import { template, passwordResetTemplate } from '../../utils/sendEmail/generateHtml';
 import { emailEmitter } from '../../utils/sendEmail/emailEvents';
 import { OAuth2Client } from 'google-auth-library';
 import { toSafeUser } from '../../utils/safeUser';
@@ -206,7 +206,7 @@ export class AuthService {
                 filter: { email },
                 data: { passwordOtp: { otp: await createHash({ text: otp }), expiresAt: new Date(Date.now() + 5 * 60 * 1000) } }
             })
-            const html = template({ code: otp, name: user.firstName, subject })
+            const html = passwordResetTemplate({ code: otp, name: user.firstName, subject })
             emailEmitter.publish('send-email-password-reset-code', { to: user.email, subject, html })
             return successHandler({ res, message: "Password reset OTP sent successfully" })
         } catch (error) {

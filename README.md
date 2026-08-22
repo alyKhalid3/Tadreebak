@@ -122,6 +122,7 @@ Signup and sensitive flows are OTP-by-email; OTPs expire in 5 minutes and lock o
 - `GET /:userId` — public profile (experience is derived from completed internships)
 - `GET /:userId/applications` — the user's own applications
 - `POST /upload/profilePicture`, `/upload/coverPicture`, `/upload/resume`, `/upload/course-certificate/:courseIndex`
+- `POST /courses` — add a course (+optional certificate); `PATCH /courses/:courseIndex` — rename and/or replace its certificate (404 if the course doesn't exist)
 
 ### Company — `/company`
 
@@ -138,6 +139,7 @@ Companies expose a `googleMapsUrl` virtual whenever `location { lat, lng }` is s
 - `GET /internships` (filters: type, location, companyId, title, closed, pagination), `GET /internships/:internId`
 - `POST /company/:companyId/internships` — company owner (consumes 1 credit)
 - `PATCH` / `DELETE /company/:companyId/internships/:internId` — company owner
+- `PATCH /company/:companyId/internships/:internId/close` | `/reopen` — company owner; closed internships leave the default listing and stop accepting applications
 - Creating an internship notifies (email + in-app) students whose interest `categories` match its required `track`, or whose education matches `requiredEducation`
 
 ### Applications

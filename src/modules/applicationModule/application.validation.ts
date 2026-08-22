@@ -32,3 +32,7 @@ export const rateApplicationSchema = z.object({
     score: z.number().int().min(1).max(5),
     comment: z.string().max(1000).optional(),
 })
+
+export const sendAcceptanceEmailSchema = z.object({
+    message: z.string().trim().min(1).max(1000).optional(),
+})

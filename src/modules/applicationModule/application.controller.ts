@@ -234,11 +234,25 @@ router.delete(
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 maxLength: 1000
+ *                 description: |
+ *                   Optional personal note from the company, shown in a styled
+ *                   block inside the acceptance email. Omit it (or send an empty
+ *                   body) to keep the standard email unchanged.
  *     responses:
  *       200:
  *         description: Acceptance email sent successfully
  *       400:
- *         description: Application is not accepted yet
+ *         description: Application is not accepted yet / validation error
  *       403:
  *         description: You are not the owner of this company
  *       404:
@@ -247,6 +261,7 @@ router.delete(
 router.post(
     '/:applicationId/send-acceptance-email',
     auth(),
+    validation(ApplicationValidation.sendAcceptanceEmailSchema),
     applicationService.sendAcceptanceEmail
 )
 

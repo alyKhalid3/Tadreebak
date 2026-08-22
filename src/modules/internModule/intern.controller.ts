@@ -439,6 +439,100 @@ companyRouter.put('/:internId', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OW
  *         description: Internship not found
  */
 companyRouter.delete('/:internId', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), internService.delete)
+/**
+ * @swagger
+ * /company/{companyId}/internships/{internId}/close:
+ *   patch:
+ *     summary: Close an internship (company owner only)
+ *     description: |
+ *       Marks the internship as closed. It disappears from the default public
+ *       listing (`GET /internships`) and can no longer accept new
+ *       applications. Existing applications are kept. Reopen with the reopen
+ *       endpoint.
+ *     tags: [Internships]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Internship closed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     internship:
+ *                       $ref: '#/components/schemas/Internship'
+ *                 msg:
+ *                   type: string
+ *       400:
+ *         description: Invalid internship id / internship is already closed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: You are not the owner of this internship's company
+ *       404:
+ *         description: Internship not found
+ */
+companyRouter.patch('/:internId/close', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), internService.close)
+/**
+ * @swagger
+ * /company/{companyId}/internships/{internId}/reopen:
+ *   patch:
+ *     summary: Reopen a closed internship (company owner only)
+ *     description: Marks a closed internship as open again so it reappears in the public listing and accepts applications.
+ *     tags: [Internships]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Internship reopened successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     internship:
+ *                       $ref: '#/components/schemas/Internship'
+ *                 msg:
+ *                   type: string
+ *       400:
+ *         description: Invalid internship id / internship is already open
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: You are not the owner of this internship's company
+ *       404:
+ *         description: Internship not found
+ */
+companyRouter.patch('/:internId/reopen', auth(), AuthZMiddleware([UserRoleEnum.COMPANY_OWNER]), internService.reopen)
 
 // Internship applications — inherits :companyId and :internId via mergeParams.
 // Exposes POST/GET on /:internId/applications and PATCH/DELETE on /:internId/applications/:applicationId.

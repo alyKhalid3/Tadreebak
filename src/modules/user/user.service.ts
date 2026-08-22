@@ -177,6 +177,90 @@ export class UserService {
         }
     }
     /**
+     * Update one course of the authenticated user: rename it and/or replace
+     * its certificate (multipart). 404 when the course doesn't exist.
+     */
+    updateCourse = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const { courseIndex } = req.params
+            const { name } = req.body as { name?: string }
+            const file = req.file as Express.Multer.File | undefined
+
+            if (typeof courseIndex !== 'string') {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+            const index = Number.parseInt(courseIndex, 10)
+            if (!Number.isInteger(index) || index < 0) {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+
+            const trimmedName = typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+            if (trimmedName !== undefined && (trimmedName.length < 2 || trimmedName.length > 100)) {
+                throw new ApplicationError('Course name must be 2-100 characters', 400)
+            }
+            if (!file && trimmedName === undefined) {
+                throw new ApplicationError('Nothing to update — provide a name and/or a certificate file', 400)
+            }
+
+            const currentUser = await this.userRepo.findById({ id: user._id.toString() })
+            if (!currentUser) {
+                throw new NotFoundException('User not found')
+            }
+            const course = currentUser.courses?.[index]
+            if (!course) {
+                throw new NotFoundException('Course not found')
+            }
+
+            // Upload the replacement certificate before touching the DB so a
+            // failed upload leaves the course untouched. Old asset destroyed
+            // after a successful upload (same order as uploadCourseCertificate).
+            let certificate: { public_id: string; secure_url: string; resourceType: 'image' | 'raw' } | undefined
+            if (file) {
+                const resourceType: 'image' | 'raw' = file.mimetype === 'application/pdf' ? 'raw' : 'image'
+                const uploaded = await uploadSingleFile({
+                    path: file.path,
+                    folder: `/users/${user.firstName}_${user._id}/courses/${index}/certificate`,
+                    resourceType,
+                })
+                certificate = { ...uploaded, resourceType }
+                if (course.certificate?.public_id) {
+                    await destroySingleFile(course.certificate.public_id, course.certificate.resourceType ?? resourceType)
+                }
+            }
+
+            const data: Record<string, any> = {}
+            if (trimmedName !== undefined) data[`courses.${index}.name`] = trimmedName
+            if (certificate) data[`courses.${index}.certificate`] = certificate
+            await this.userRepo.update({
+                filter: { _id: user._id },
+                data,
+            })
+
+            // Bust the cached profile so the next read reflects the change.
+            await cacheDel(`user:${user._id.toString()}`)
+
+            const origin = `${req.protocol}://${req.get('host')}`
+            return successHandler({
+                res,
+                message: 'Course updated successfully',
+                data: {
+                    course: {
+                        index,
+                        name: trimmedName ?? course.name,
+                        certificate: certificate
+                            ? this.certWithUrl(certificate, origin)
+                            : course.certificate
+                                ? this.certWithUrl(course.certificate as { public_id: string; secure_url: string; resourceType: 'image' | 'raw' }, origin)
+                                : null,
+                    },
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    /**
      * Add a course (and optionally its certificate) to the authenticated
      * user's profile in a single call. Atomic: if the cert upload fails,
      * the course is NOT added.
