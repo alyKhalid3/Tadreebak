@@ -137,6 +137,8 @@ Companies expose a `googleMapsUrl` virtual whenever `location { lat, lng }` is s
 ### Internships — `/internships` and `/company/:companyId/internships`
 
 - `GET /internships` (filters: type, location, companyId, title, closed, pagination), `GET /internships/:internId`
+- `POST /internships/:internId/save` | `DELETE /internships/:internId/save` (student) — bookmark / unbookmark (idempotent)
+- `GET /internships/saved` (student) — the student's bookmarked internships, paginated, newest first
 - `POST /company/:companyId/internships` — company owner (consumes 1 credit)
 - `PATCH` / `DELETE /company/:companyId/internships/:internId` — company owner
 - `PATCH /company/:companyId/internships/:internId/close` | `/reopen` — company owner; closed internships leave the default listing and stop accepting applications

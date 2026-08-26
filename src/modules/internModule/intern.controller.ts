@@ -10,6 +10,9 @@ import { applicationRouter } from "../applicationModule";
 export const internRoutes = {
     base: '/internships',
     list: '/',
+    saved: '/saved',
+    save: '/:internId/save',
+    unsave: '/:internId/save',
     getInternById: '/:internId',
 }
 
@@ -94,6 +97,110 @@ const router = Router()
  *                   type: string
  */
 router.get(internRoutes.list, validation(InternValidation.listInternQuerySchema), internService.list)
+/**
+ * @swagger
+ * /internships/saved:
+ *   get:
+ *     summary: List the authenticated student's saved internships
+ *     description: Returns the internships the student has bookmarked, newest first.
+ *     tags: [Internships]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: string
+ *           default: "1"
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: string
+ *           default: "10"
+ *         description: Items per page (max 50)
+ *     responses:
+ *       200:
+ *         description: Saved internships fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     internships:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Internship'
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
+ *                         pages: { type: integer }
+ *                 msg: { type: string }
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Student role required
+ */
+router.get(internRoutes.saved, auth(), AuthZMiddleware([UserRoleEnum.STUDENT]), validation(InternValidation.listSavedInternQuerySchema), internService.listSavedInternships)
+/**
+ * @swagger
+ * /internships/{internId}/save:
+ *   post:
+ *     summary: Save (bookmark) an internship (student only)
+ *     description: Idempotent — saving the same internship twice is a no-op success.
+ *     tags: [Internships]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Internship saved
+ *       400:
+ *         description: Invalid internship id
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Student role required
+ *       404:
+ *         description: Internship not found
+ */
+router.post(internRoutes.save, auth(), AuthZMiddleware([UserRoleEnum.STUDENT]), internService.saveInternship)
+/**
+ * @swagger
+ * /internships/{internId}/save:
+ *   delete:
+ *     summary: Remove a saved internship bookmark (student only)
+ *     description: Idempotent — removing an unsaved internship is a no-op success.
+ *     tags: [Internships]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: internId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Internship removed from saved
+ *       400:
+ *         description: Invalid internship id
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Student role required
+ */
+router.delete(internRoutes.unsave, auth(), AuthZMiddleware([UserRoleEnum.STUDENT]), internService.unsaveInternship)
 /**
  * @swagger
  * /internships/{internId}:

@@ -47,3 +47,8 @@ export const listInternQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
 })
+
+export const listSavedInternQuerySchema = z.object({
+    page: z.string().optional(),
+    limit: z.string().optional(),
+})

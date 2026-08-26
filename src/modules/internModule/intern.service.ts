@@ -4,6 +4,7 @@ import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
 import mongoose, { isObjectIdOrHexString } from "mongoose";
 import { InternShipModel } from "../../DB/models/internship.model";
+import { SavedInternshipModel } from "../../DB/models/savedInternship.model";
 import { companyModel } from "../../DB/models/company.model";
 import { assertOwnedCompany } from "../../utils/companyAccess";
 import { ApplicationRepo } from "../../DB/repos/application.repo";
@@ -16,10 +17,12 @@ import { NotificationType } from "../../DB/types/notification.type";
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache";
 import { applyCompanyVirtuals } from "../../utils/companyVirtuals";
 import { isBillingEnabled } from "../../utils/featureFlags";
+import { SavedInternshipRepo } from "../../DB/repos/savedInternship.repo";
 
 export class InternService {
     private internRepo = new InternRepo
     private applicationRepo = new ApplicationRepo
+    private savedRepo = new SavedInternshipRepo
 
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -236,6 +239,9 @@ export class InternService {
                 await session.withTransaction(async () => {
                     await this.applicationRepo.deleteMany({ filter: { internshipId: internObjectId }, options: { session } })
                     await this.internRepo.deleteMany({ filter: { _id: internObjectId }, options: { session } })
+                    // Drop bookmarks for the deleted internship too — otherwise
+                    // the saved-internship list surfaces a dead `internshipId`.
+                    await this.savedRepo.deleteMany({ filter: { internshipId: internObjectId }, options: { session } })
                 })
             } finally {
                 session.endSession()
@@ -397,6 +403,111 @@ export class InternService {
             }
 
             return successHandler({ res, message: "Internship fetched successfully", data: { internship } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Student: save / unsave / list saved internships ----
+
+    saveInternship = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const internId = req.params.internId as string
+            if (!isObjectIdOrHexString(internId)) {
+                throw new ApplicationError("Invalid internship id", 400)
+            }
+            const internship = await this.internRepo.findById({ id: internId })
+            if (!internship) {
+                throw new NotFoundException("Internship not found")
+            }
+            // Idempotent — saving twice is not an error so the frontend can
+            // freely toggle without showing a confusing "already saved" toast.
+            const existing = await this.savedRepo.findOne({
+                filter: {
+                    studentId: user._id,
+                    internshipId: new mongoose.Types.ObjectId(internId),
+                },
+            })
+            if (!existing) {
+                await this.savedRepo.create({
+                    data: {
+                        studentId: user._id,
+                        internshipId: new mongoose.Types.ObjectId(internId),
+                    },
+                })
+            }
+            return successHandler({ res, message: "Internship saved" })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    unsaveInternship = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const internId = req.params.internId as string
+            if (!isObjectIdOrHexString(internId)) {
+                throw new ApplicationError("Invalid internship id", 400)
+            }
+            // Idempotent — no-op when not previously saved.
+            await this.savedRepo.deleteMany({
+                filter: {
+                    studentId: user._id,
+                    internshipId: new mongoose.Types.ObjectId(internId),
+                },
+            })
+            return successHandler({ res, message: "Internship removed from saved" })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    listSavedInternships = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const { page = "1", limit = "10" } = req.query as Record<string, string | undefined>
+
+            const pageNum = Math.max(1, parseInt(page || "1", 10))
+            const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
+            const skip = (pageNum - 1) * limitNum
+
+            const filter = { studentId: user._id }
+            const [items, total] = await Promise.all([
+                this.savedRepo.find({
+                    filter,
+                    options: {
+                        skip,
+                        limit: limitNum,
+                        sort: { createdAt: -1 },
+                        populate: [{ path: "internshipId" }],
+                        lean: true,
+                    },
+                }),
+                SavedInternshipModel.countDocuments(filter),
+            ])
+
+            // Populate leaves `internshipId: null` when the underlying internship
+            // was hard-deleted out from under the bookmark. The delete cascade
+            // inside `delete()` already drops these rows, but be defensive for
+            // any orphaned documents that slip through (e.g. manual cleanup).
+            const internships = items
+                .map((row) => (row as any).internshipId)
+                .filter((doc) => doc != null)
+
+            return successHandler({
+                res,
+                message: "Saved internships fetched successfully",
+                data: {
+                    internships,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        pages: Math.ceil(total / limitNum),
+                    },
+                },
+            })
         } catch (error) {
             next(error)
         }
