@@ -77,7 +77,21 @@ const userSchema = new mongoose.Schema<IUser>({
     address: { type: String },
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 },
+
+    // ---- Intern enrollment (Phase 1 of dashboard plan) ----
+    // Set on application accept. See types/user.type.ts for the full contract.
+    enrolledAt: { type: Date },
+    enrollmentCompanyId: { type: Schema.Types.ObjectId, ref: 'Company' },
+    totalPoints: { type: Number, default: 0 },
+    internshipStartDate: { type: Date },
+    internshipEndDate: { type: Date, default: null },
 }, { timestamps: true });
+
+// Indexes for intern-dashboard queries. The list interns endpoint
+// filters by `enrollmentCompanyId` and sorts by performance; the
+// leaderboard sorts globally by `totalPoints` — both are common.
+userSchema.index({ enrollmentCompanyId: 1, role: 1 })
+userSchema.index({ totalPoints: -1 })
 
 userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }) {
     this.firstCreation = this.isNew

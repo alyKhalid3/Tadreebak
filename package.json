@@ -8,7 +8,7 @@
     "start:prod": "NODE_ENV=production tsx --import ./src/instrument.ts src/index.ts",
     "typecheck": "tsc --noEmit",
     "db:fix-user-indexes": "tsx src/scripts/fix-user-phone-index.ts",
-    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts src/utils/featureFlags.test.ts"
+    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts src/utils/featureFlags.test.ts src/modules/company/programs/programs.validation.test.ts src/modules/company/projects/projects.validation.test.ts src/modules/company/interns/interns.validation.test.ts src/modules/company/tasks/tasks.validation.test.ts"
   },
   "keywords": [],
   "author": "",

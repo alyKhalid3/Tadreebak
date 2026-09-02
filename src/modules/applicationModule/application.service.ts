@@ -20,6 +20,8 @@ import { RatingModel } from "../../DB/models/rating.model";
 import { RatingFrom, RatingTarget } from "../../DB/types/rating.type";
 import { companyModel } from "../../DB/models/company.model";
 import { UserModel } from "../../DB/models/user.model";
+import { UserRoleEnum } from "../../DB/types/user.type";
+import { cacheDel, cacheFlushPrefix } from "../../cache/cache";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
@@ -372,6 +374,43 @@ export class ApplicationService {
                 data: { status, reviewedBy: user._id },
                 options: { returnDocument: "after" },
             })
+
+            // Phase 1: when an application is accepted, promote the student
+            // to an active intern at this company. One company at a time —
+            // an intern already enrolled at a different company cannot be
+            // accepted again (we surface a 409 below).
+            if (status === ApplicationStatus.ACCEPTED) {
+                const existingEnrollment = await UserModel.findOne(
+                    { _id: application.studentId },
+                    { enrollmentCompanyId: 1, role: 1, firstName: 1, lastName: 1 },
+                ).lean()
+                if (
+                    existingEnrollment?.enrollmentCompanyId &&
+                    existingEnrollment.enrollmentCompanyId.toString() !== companyId
+                ) {
+                    throw new ApplicationError(
+                        `${existingEnrollment.firstName} ${existingEnrollment.lastName} is already an intern at another company`,
+                        409,
+                    )
+                }
+                await UserModel.updateOne(
+                    { _id: application.studentId },
+                    {
+                        $set: {
+                            role: UserRoleEnum.INTERN,
+                            enrolledAt: new Date(),
+                            enrollmentCompanyId: new mongoose.Types.ObjectId(companyId),
+                            internshipStartDate: new Date(),
+                            internshipEndDate: null,
+                            totalPoints: 0,
+                        },
+                    },
+                )
+                // Bust the company's intern-roster cache so the next
+                // read sees the new enrollment.
+                await cacheFlushPrefix(`interns:list:${companyId}`)
+                await cacheDel(`user:${application.studentId.toString()}`)
+            }
 
             // Notify the student of the decision. Fetch the internship title so
             // the message is descriptive (cheap single read, already on the

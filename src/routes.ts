@@ -9,6 +9,13 @@ import { billingRouter, billingWebhookRouter } from "./modules/billingModule";
 import ratingRouter from "./modules/applicationModule/rating.controller";
 import { serveFileProxy } from "./utils/multer/fileProxy";
 import { auth } from "./middleware/authentication.middleware";
+// Phase 1 dashboard modules — programs, projects, interns roster.
+import { programsRouter } from "./modules/company/programs";
+import { projectsRouter } from "./modules/company/projects";
+import { internsRouter } from "./modules/company/interns";
+// Phase 2 dashboard modules — tasks (kanban) + intern-side task endpoints.
+import { tasksRouter } from "./modules/company/tasks";
+import { internTasksRouter } from "./modules/intern/tasks";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -23,6 +30,15 @@ baseRouter.use('/company/:companyId/internships', internCompanyRouter)
 baseRouter.use('/notifications', notificationRouter)
 baseRouter.use('/company/:companyId/billing', billingRouter)
 baseRouter.use('/webhooks/paymob', billingWebhookRouter)
+// Phase 1: intern-management dashboard modules. Each is merged-params so
+// :companyId is inherited from the URL.
+baseRouter.use('/company/:companyId/programs', programsRouter)
+baseRouter.use('/company/:companyId/projects', projectsRouter)
+baseRouter.use('/company/:companyId/interns', internsRouter)
+// Phase 2: kanban + task CRUD.
+baseRouter.use('/company/:companyId/tasks', tasksRouter)
+// Intern-side task endpoints (scoped to /api/v1/intern/me/tasks).
+baseRouter.use('/intern/me/tasks', internTasksRouter)
 /**
  * @swagger
  * /file-proxy/{filename}:

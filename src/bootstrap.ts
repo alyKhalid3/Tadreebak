@@ -13,6 +13,7 @@ import cors from 'cors';
 import { globalLimiter } from './middleware/rateLimiter';
 import { closeRedis, isRedisHealthy } from './cache/redis';
 import { Sentry } from './instrument';
+import { startTaskReminders, stopTaskReminders } from './utils/scheduler/taskReminders';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -223,6 +224,11 @@ export const bootstrap = async () => {
     // the request handler + error handler in a single call.
     Sentry.setupExpressErrorHandler(app);
 
+    // Phase 2: start the task reminder scheduler. Hourly scans pick up
+    // tasks approaching their due date and overdue ones, then publish
+    // notifications through the same bus the request handlers use.
+    startTaskReminders()
+
     app.use((req: Request, res: Response) => {
         return res.status(404).json({ errMsg: 'Route not found', cause: 404 })
     });
@@ -251,6 +257,9 @@ export const bootstrap = async () => {
         server.close((err) => {
             if (err) console.error('Error during server.close:', err);
         });
+        // Stop the task reminder scheduler so the timer doesn't keep
+        // the process alive past server.close().
+        stopTaskReminders()
         try {
             const mongoose = await import('mongoose');
             await mongoose.default.disconnect();

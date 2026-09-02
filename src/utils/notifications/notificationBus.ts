@@ -60,6 +60,33 @@ const buildContent = (
                 title: 'New internship match',
                 message: `${data.companyName ? `${data.companyName} posted ` : 'A new '}internship${data.track ? ` for ${data.track}` : ''}${data.internshipTitle ? `: ${data.internshipTitle}` : ''}.`,
             }
+        case NotificationType.TASK_ASSIGNED:
+            return {
+                title: 'New task assigned',
+                message: `You have been assigned a new task: "${data.taskTitle ?? 'Untitled'}". Due ${data.dueDate ? new Date(data.dueDate).toLocaleDateString() : 'soon'}.`,
+            }
+        case NotificationType.TASK_SUBMITTED:
+            return {
+                title: 'Task submitted for review',
+                message: `${data.internName ?? 'An intern'} submitted "${data.taskTitle ?? 'a task'}" for your review.`,
+            }
+        case NotificationType.TASK_REVIEWED:
+            return {
+                title: data.approved === false ? 'Task sent back' : 'Task approved',
+                message: data.approved === false
+                    ? `Your task "${data.taskTitle ?? ''}" was sent back for more work${data.feedback ? `: ${data.feedback}` : '.'}`
+                    : `Your task "${data.taskTitle ?? ''}" was approved${data.pointsAwarded ? ` and awarded ${data.pointsAwarded} points` : ''}.`,
+            }
+        case NotificationType.TASK_DUE_SOON:
+            return {
+                title: 'Task due soon',
+                message: `"${data.taskTitle ?? 'A task'}" is due within 24 hours.`,
+            }
+        case NotificationType.TASK_OVERDUE:
+            return {
+                title: 'Task overdue',
+                message: `"${data.taskTitle ?? 'A task'}" is overdue.`,
+            }
     }
 }
 

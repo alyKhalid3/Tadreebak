@@ -1,9 +1,16 @@
 
+import { Types } from "mongoose"
+
 export enum UserRoleEnum {
     ADMIN = 'admin',
     USER = 'user',
     STUDENT = 'student',
     COMPANY_OWNER = 'company_owner',
+    // `intern` is set when an accepted application promotes the user from
+    // `student` to an active intern at a company. One-company-at-a-time —
+    // an intern can only be enrolled at one company; a second accepted
+    // application is rejected (enforced in application.service.accept).
+    INTERN = 'intern',
 }
 export type otp = {
     otp: string;
@@ -95,4 +102,19 @@ export interface IUser {
     // would require a non-atomic read-modify-write, which is racy.
     ratingCount: number
     ratingSum?: number
+
+    // ---- Intern enrollment (Phase 1 of dashboard plan) ----
+    // `enrolledAt` is set when the user's first application is accepted;
+    // `enrollmentCompanyId` is the only company they can be an intern at.
+    // The pair is removed (set to null) when the program completes and the
+    // user transitions to "alumni" (Phase 3 — intern self-service).
+    enrolledAt?: Date
+    enrollmentCompanyId?: Types.ObjectId
+    // Cumulative gamification total — written on every PointTransaction via
+    // `$inc` so the leaderboard can sort without an aggregation.
+    totalPoints?: number
+    // The window of the intern's active engagement. Set on enroll, cleared
+    // when the program ends. `internshipEndDate = null` means "still active".
+    internshipStartDate?: Date
+    internshipEndDate?: Date | null
 }
