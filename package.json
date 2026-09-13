@@ -8,7 +8,9 @@
     "start:prod": "NODE_ENV=production tsx --import ./src/instrument.ts src/index.ts",
     "typecheck": "tsc --noEmit",
     "db:fix-user-indexes": "tsx src/scripts/fix-user-phone-index.ts",
-    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts src/utils/featureFlags.test.ts src/modules/company/programs/programs.validation.test.ts src/modules/company/projects/projects.validation.test.ts src/modules/company/interns/interns.validation.test.ts src/modules/company/tasks/tasks.validation.test.ts"
+    "migrate:enrollments": "tsx src/scripts/migrate-to-enrollments.ts",
+    "migrate:enrollments:dry": "tsx src/scripts/migrate-to-enrollments.ts --dry-run",
+    "test": "node --import tsx --test src/utils/paymob/paymob.service.test.ts src/utils/otp.test.ts src/utils/safeUser.test.ts src/utils/sendEmail/escapeHtml.test.ts src/cache/cache.test.ts src/utils/companyVirtuals.test.ts src/middleware/dateField.test.ts src/utils/featureFlags.test.ts src/utils/enrollment.test.ts src/utils/taskStateMachine.test.ts src/utils/taskPriority.test.ts src/utils/aggregations/evaluation.test.ts src/middleware/authorization.middleware.test.ts src/middleware/validation.middleware.test.ts src/modules/company/programs/programs.validation.test.ts src/modules/company/projects/projects.validation.test.ts src/modules/company/interns/interns.validation.test.ts src/modules/company/tasks/tasks.validation.test.ts src/modules/company/evaluations/evaluations.validation.test.ts src/modules/company/attendance/attendance.validation.test.ts src/modules/intern/me/internMe.validation.test.ts"
   },
   "keywords": [],
   "author": "",

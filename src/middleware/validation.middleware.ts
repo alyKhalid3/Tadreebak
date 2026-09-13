@@ -35,10 +35,31 @@ export const validation = (
         throw new ValidationError(errors.join(','))
     }
 
-    // For single-source validation, we can be strict about which part of
-    // the request we overwrite. For the legacy merged mode, replicate the
-    // existing body/query split so callers that depend on it don't break.
-    if (source === "body" || source === "params" || source === "merged") {
+    // For single-source validation, only touch the part of the request
+    // that we actually validated. Otherwise we'd accidentally wipe out
+    // unrelated query params when the controller does source: "body",
+    // or unrelated body fields when it does source: "query".
+    if (source === "body") {
+        const { files, legalAttachment, ...sanitized } = result.data as Record<string, any>
+        req.body = sanitized
+    } else if (source === "params") {
+        // Express 5's req.params is a getter — we can't write it back.
+        // The controller reads from `req.params.X` so the parse result
+        // here is best-effort: the controller should use the raw param
+        // and the parsed version only for cross-validation. For now,
+        // do nothing.
+    } else if (source === "query") {
+        // Only overwrite req.query
+        Object.defineProperty(req, 'query', {
+            writable: true,
+            configurable: true,
+            enumerable: true,
+            value: result.data,
+        })
+    } else {
+        // source === "merged" — the legacy behavior: split the merged
+        // data back into body and query, so existing controllers that
+        // depend on the split still work.
         const bodyKeys = new Set(Object.keys(body))
         const queryKeys = new Set(Object.keys(query))
 
@@ -57,14 +78,6 @@ export const validation = (
             configurable: true,
             enumerable: true,
             value: cleanQuery,
-        });
-    } else {
-        // source === "query" — only overwrite req.query
-        Object.defineProperty(req, 'query', {
-            writable: true,
-            configurable: true,
-            enumerable: true,
-            value: result.data,
         });
     }
 

@@ -40,6 +40,12 @@ export const companySchema = new mongoose.Schema<ICompany>({
     internshipCredits: { type: Number, default: 1, min: 0 },
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 },
+    // IANA timezone string. Used by the attendance module to compute
+    // "today" and weekly-pattern day-of-week in the company's wall
+    // clock. Optional — falls back to UTC at the helper layer when
+    // missing (so legacy companies don't need a backfill to keep
+    // working).
+    timezone: { type: String },
 }, { timestamps: true });
 
 // Link-out to Google Maps when coordinates exist. Present in every serialized

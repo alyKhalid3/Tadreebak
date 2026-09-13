@@ -1,6 +1,6 @@
 
 import mongoose, { HydratedDocument, Schema } from "mongoose";
-import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes, IEducation, IExperience } from "../types/user.type";
+import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes, IEducation, IExperience, IEnrollment } from "../types/user.type";
 import { template } from "../../utils/sendEmail/generateHtml";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { createHash } from "../../utils/hash";
@@ -78,8 +78,23 @@ const userSchema = new mongoose.Schema<IUser>({
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 },
 
-    // ---- Intern enrollment (Phase 1 of dashboard plan) ----
-    // Set on application accept. See types/user.type.ts for the full contract.
+    // ---- Intern enrollment (multi-company, Phase 5 redesign) ----
+    // The canonical model. One user can be enrolled at many companies.
+    enrollments: [{
+        _id: { type: Schema.Types.ObjectId, auto: true },
+        companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+        status: {
+            type: String,
+            enum: ['active', 'completed', 'withdrawn'],
+            default: 'active',
+        },
+        enrolledAt: { type: Date, required: true },
+        internshipStartDate: { type: Date, required: true },
+        internshipEndDate: { type: Date, default: null },
+        totalPoints: { type: Number, default: 0 },
+    }],
+    // Legacy single-company fields. Kept readable for the migration
+    // window. New code writes only to enrollments[].
     enrolledAt: { type: Date },
     enrollmentCompanyId: { type: Schema.Types.ObjectId, ref: 'Company' },
     totalPoints: { type: Number, default: 0 },
@@ -88,10 +103,12 @@ const userSchema = new mongoose.Schema<IUser>({
 }, { timestamps: true });
 
 // Indexes for intern-dashboard queries. The list interns endpoint
-// filters by `enrollmentCompanyId` and sorts by performance; the
-// leaderboard sorts globally by `totalPoints` — both are common.
+// filters by `enrollments.companyId`; the leaderboard sorts by per-
+// enrollment points — both are common.
+userSchema.index({ 'enrollments.companyId': 1, 'enrollments.status': 1 })
+userSchema.index({ 'enrollments.totalPoints': -1 })
+// Legacy indexes (kept for the migration window)
 userSchema.index({ enrollmentCompanyId: 1, role: 1 })
-userSchema.index({ totalPoints: -1 })
 
 userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }) {
     this.firstCreation = this.isNew

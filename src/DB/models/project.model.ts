@@ -1,6 +1,20 @@
 import mongoose, { Schema } from "mongoose"
 import { IProject, ProjectStatus } from "../types/project.type"
 
+// Same shape as the task attachment subdoc. One file per project
+// (the "explanation") — kept as a single subdoc rather than an
+// array because the use case is a single brief, not a media gallery.
+const attachmentSchema = new Schema(
+    {
+        public_id: { type: String, required: true },
+        secure_url: { type: String, required: true },
+        name: { type: String, required: true, maxlength: 255 },
+        mimeType: { type: String, required: true, maxlength: 127 },
+        size: { type: Number, required: true, min: 0 },
+    },
+    { _id: false },
+)
+
 const projectSchema = new mongoose.Schema<IProject>(
     {
         name: { type: String, required: true, trim: true, maxlength: 100 },
@@ -17,6 +31,7 @@ const projectSchema = new mongoose.Schema<IProject>(
         startDate: { type: Date },
         endDate: { type: Date, default: null },
         color: { type: String, default: "#10b981" },
+        attachment: { type: attachmentSchema, default: undefined },
     },
     { timestamps: true },
 )

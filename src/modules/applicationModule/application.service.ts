@@ -375,41 +375,73 @@ export class ApplicationService {
                 options: { returnDocument: "after" },
             })
 
-            // Phase 1: when an application is accepted, promote the student
-            // to an active intern at this company. One company at a time —
-            // an intern already enrolled at a different company cannot be
-            // accepted again (we surface a 409 below).
+            // Phase 5: when an application is accepted, append a new
+            // active enrollment to user.enrollments[]. The user can be
+            // enrolled at multiple companies — the legacy single-
+            // company fields are no longer the source of truth.
+            //
+            // Block: same-company re-accept of an already-active
+            // enrollment. The intern has to withdraw / complete the
+            // current one before being re-accepted. Re-accept after
+            // a withdrawn/completed enrollment is fine (per the
+            // design decision: re-accept allowed).
             if (status === ApplicationStatus.ACCEPTED) {
-                const existingEnrollment = await UserModel.findOne(
+                const targetUser = await UserModel.findOne(
                     { _id: application.studentId },
-                    { enrollmentCompanyId: 1, role: 1, firstName: 1, lastName: 1 },
+                    { enrollments: 1, firstName: 1, lastName: 1 },
                 ).lean()
-                if (
-                    existingEnrollment?.enrollmentCompanyId &&
-                    existingEnrollment.enrollmentCompanyId.toString() !== companyId
-                ) {
+                const existing = (targetUser?.enrollments ?? []).find(
+                    (e) =>
+                        e.companyId.toString() === companyId &&
+                        e.status === "active",
+                )
+                if (existing) {
                     throw new ApplicationError(
-                        `${existingEnrollment.firstName} ${existingEnrollment.lastName} is already an intern at another company`,
+                        `${targetUser?.firstName ?? ""} ${targetUser?.lastName ?? ""} is already an active intern at this company`,
                         409,
                     )
                 }
+
+                const now = new Date()
+                const newEnrollment = {
+                    _id: new mongoose.Types.ObjectId(),
+                    companyId: new mongoose.Types.ObjectId(companyId),
+                    status: "active",
+                    enrolledAt: now,
+                    internshipStartDate: now,
+                    internshipEndDate: null,
+                    totalPoints: 0,
+                }
+                // Promote role on first accept; subsequent accepts
+                // (the user is already an intern elsewhere) are no-ops
+                // for the role.
                 await UserModel.updateOne(
                     { _id: application.studentId },
                     {
+                        // First enrollment ever → set role to INTERN
+                        // AND push the new entry. Existing enrollments
+                        // → only push (don't touch role or the legacy
+                        // single-company fields).
                         $set: {
-                            role: UserRoleEnum.INTERN,
-                            enrolledAt: new Date(),
-                            enrollmentCompanyId: new mongoose.Types.ObjectId(companyId),
-                            internshipStartDate: new Date(),
-                            internshipEndDate: null,
-                            totalPoints: 0,
+                            ...(!(targetUser?.enrollments && targetUser.enrollments.length > 0)
+                                ? { role: UserRoleEnum.INTERN }
+                                : {}),
                         },
+                        $push: { enrollments: newEnrollment },
                     },
                 )
-                // Bust the company's intern-roster cache so the next
-                // read sees the new enrollment.
+
+                // Bust caches: the per-company roster, the user's
+                // profile cache, the intern-side picker
+                // (`intern:enrollments:{userId}`), AND the per-company
+                // intern-side view (`intern:me:{userId}:...` prefix).
+                // The picker key starts with `intern:enrollments:` so
+                // the prefix-flush on `intern:me:` below does NOT
+                // cover it — flush it explicitly.
                 await cacheFlushPrefix(`interns:list:${companyId}`)
                 await cacheDel(`user:${application.studentId.toString()}`)
+                await cacheDel(`intern:enrollments:${application.studentId.toString()}`)
+                await cacheFlushPrefix(`intern:me:${application.studentId.toString()}`)
             }
 
             // Notify the student of the decision. Fetch the internship title so

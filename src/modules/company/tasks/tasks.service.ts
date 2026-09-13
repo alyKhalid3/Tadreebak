@@ -1,12 +1,22 @@
-// Phase 2 of the dashboard plan: company-side task CRUD + the
-// state-machine transition endpoint that emits notifications and
-// awards points on completion.
+// Phase 2 + Phase 6: company-side task CRUD + state-machine transition
+// + broadcast (4 modes of task creation).
 //
-// Cache strategy (Phase 1 pattern):
+// Broadcast modes (target: 'company' | 'program' | 'project' | 'intern'):
+//   - company → fan out to every active intern at this company
+//   - program → fan out to every intern in `program.internIds[]`
+//   - project → fan out to every intern in `project.internIds[]`
+//   - intern  → single recipient
+// In every case the service resolves the target to a member list,
+// generates one `taskGroupId`, and creates N task rows that share it.
+// The admin kanban can then group the N rows under one card via
+// `?taskGroupId=` or bulk-update them via PATCH /group/:groupId.
+//
+// Cache strategy:
 //   - list/detail → 60s TTL under tasks:list:{companyId} / tasks:detail:{taskId}
 //   - mutations (create, update, archive, transition, attachments) flush
-//     the company's prefix + the task's detail key
-//   - intern's own list/detail cached under tasks:intern:{internId}
+//     the company's prefix + the task's detail key + each affected
+//     intern's per-company cache prefix
+//   - intern's own list/detail cached under tasks:intern:{internId}:{companyId}
 //
 // Notifications are published via notificationEmitter (not awaited
 // here — the bus handles its own errors and won't block the response).
@@ -14,7 +24,7 @@
 import { NextFunction, Request, Response } from "express"
 import mongoose, { Types, isObjectIdOrHexString } from "mongoose"
 import { TaskRepo } from "../../../DB/repos/task.repo"
-import { ITask, TaskStatus, ITaskAttachment } from "../../../DB/types/task.type"
+import { ITask, TaskStatus, ITaskAttachment, TaskPriority } from "../../../DB/types/task.type"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
 import { assertOwnedCompany } from "../../../utils/companyAccess"
@@ -24,6 +34,9 @@ import {
     cacheWrap,
 } from "../../../cache/cache"
 import { UserModel } from "../../../DB/models/user.model"
+import { ProgramModel } from "../../../DB/models/program.model"
+import { ProjectModel } from "../../../DB/models/project.model"
+import { EnrollmentStatus, IUser } from "../../../DB/types/user.type"
 import { notificationEmitter } from "../../../utils/notifications/notificationEvents"
 import { NotificationType } from "../../../DB/types/notification.type"
 import {
@@ -31,30 +44,16 @@ import {
     uploadSingleFile,
 } from "../../../utils/multer/cloudinary.service"
 import { ProjectRepo } from "../../../DB/repos/project.repo"
+import { canTransition } from "../../../utils/taskStateMachine"
+import { prioritySwitchBranches, priorityRank } from "../../../utils/taskPriority"
+import { hasActiveEnrollmentAt } from "../../../utils/enrollment"
 
 const taskRepo = new TaskRepo()
 const projectRepo = new ProjectRepo()
 
-// Allowed status transitions. Used by both the company's transition
-// endpoint and the intern's start/submit endpoints. Soft-delete
-// (`archived`) is a separate endpoint, not a transition.
-const ALLOWED_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-    [TaskStatus.TODO]: [TaskStatus.IN_PROGRESS, TaskStatus.COMPLETE],
-    [TaskStatus.IN_PROGRESS]: [TaskStatus.IN_REVIEW, TaskStatus.COMPLETE],
-    [TaskStatus.IN_REVIEW]: [
-        TaskStatus.IN_PROGRESS, // admin sends back for more work
-        TaskStatus.COMPLETE,
-    ],
-    [TaskStatus.COMPLETE]: [], // terminal until archived
-    [TaskStatus.ARCHIVED]: [], // terminal
-}
-
-const isAllowedTransition = (from: TaskStatus, to: TaskStatus): boolean =>
-    ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
-
-// The priority sort is hand-rolled (high > medium > low) because
-// string-sorting the enum would put 'high' after 'low' alphabetically.
-const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+// The priority sort uses the aggregation pipeline (see `buildListPipeline`
+// below) so the DB returns a globally-correct order across pages —
+// in-memory sorts would only reorder within a single page.
 
 export class TasksService {
     // ---- Company: list tasks (kanban view) ----
@@ -68,6 +67,7 @@ export class TasksService {
                 internId,
                 projectId,
                 programId,
+                taskGroupId,
                 status,
                 priority,
                 tag,
@@ -79,6 +79,7 @@ export class TasksService {
                 internId?: string
                 projectId?: string
                 programId?: string
+                taskGroupId?: string
                 status?: TaskStatus
                 priority?: string
                 tag?: string
@@ -98,6 +99,7 @@ export class TasksService {
             if (internId) filter.internId = new Types.ObjectId(internId)
             if (projectId) filter.projectId = new Types.ObjectId(projectId)
             if (programId) filter.programId = new Types.ObjectId(programId)
+            if (taskGroupId) filter.taskGroupId = new Types.ObjectId(taskGroupId)
             if (tag) filter.tags = tag
             if (search) filter.title = { $regex: search, $options: "i" }
 
@@ -105,33 +107,53 @@ export class TasksService {
             const limitNum = limit ?? 20
             const skip = (pageNum - 1) * limitNum
 
-            // Sort: priority is hand-rolled; everything else maps to a
-            // mongo sort key. Default `dueDate` is the kanban default —
-            // soonest first, so the most urgent work floats to the top.
-            const sortKey: Record<string, 1 | -1> =
+            // Sort: priority uses an aggregation pipeline so the DB
+            // does a globally-correct sort across pages (the previous
+            // in-memory sort only reordered within a single page —
+            // meaning the same priority bucket would repeat on every
+            // page). For other sorts, we still use a single-stage
+            // aggregation to keep the items + totalCount in one round
+            // trip via $facet.
+            const sortStage =
                 sort === "recent"
-                    ? { createdAt: -1 }
+                    ? { createdAt: -1 as const }
                     : sort === "title"
-                      ? { title: 1 }
-                      : { dueDate: 1 }
+                      ? { title: 1 as const }
+                      : sort === "priority"
+                        ? { priorityRank: 1 as const, dueDate: 1 as const }
+                        : { dueDate: 1 as const }
 
-            const cacheKey = `tasks:list:${companyId}:${JSON.stringify({ internId, projectId, programId, status, priority, tag, search, sort, pageNum, limitNum })}`
+            const cacheKey = `tasks:list:${companyId}:${JSON.stringify({ internId, projectId, programId, taskGroupId, status, priority, tag, search, sort, pageNum, limitNum })}`
             const { items, total } = await cacheWrap(cacheKey, 60, async () => {
-                const [rows, totalCount] = await Promise.all([
-                    taskRepo.find({
-                        filter,
-                        options: { skip, limit: limitNum },
-                    }),
-                    (await import("../../../DB/models/task.model")).TaskModel.countDocuments(filter),
-                ])
-                // priority is hand-sorted in-memory (small page, < 100 docs)
+                const TaskModel = (await import("../../../DB/models/task.model")).TaskModel
+                const pipeline: any[] = [{ $match: filter }]
+
+                // Add the priority rank only when we need it (saves a
+                // tiny bit of work on every other sort).
                 if (sort === "priority") {
-                    rows.sort(
-                        (a: any, b: any) =>
-                            (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9),
-                    )
+                    pipeline.push({
+                        $addFields: {
+                            priorityRank: {
+                                $switch: {
+                                    branches: prioritySwitchBranches(),
+                                    default: 9,
+                                },
+                            },
+                        },
+                    })
                 }
-                return { items: rows, total: totalCount }
+
+                pipeline.push({
+                    $facet: {
+                        items: [{ $sort: sortStage }, { $skip: skip }, { $limit: limitNum }],
+                        totalCount: [{ $count: "count" }],
+                    },
+                })
+
+                const [result] = await TaskModel.aggregate(pipeline)
+                const items = result?.items ?? []
+                const total = result?.totalCount?.[0]?.count ?? 0
+                return { items, total }
             })
 
             return successHandler({
@@ -152,97 +174,316 @@ export class TasksService {
         }
     }
 
-    // ---- Company: create task ----
+    // ---- Company: create task (broadcast) ----
+    // Phase 6 — 4 target modes:
+    //   - company → every active enrollment at this company
+    //   - program → every intern in `program.internIds[]`
+    //   - project → every intern in `project.internIds[]`
+    //   - intern  → one recipient (`internId` required)
+    //
+    // In every case the service creates N task rows that share the
+    // same `taskGroupId` so the admin kanban can group them and the
+    // bulk-update endpoint can find them in one query. 0 members →
+    // 400 (the admin asked for a broadcast with no recipients).
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
             await assertOwnedCompany(companyId, user._id.toString())
 
-            const data = req.body as {
+            // The middleware already discriminated the union; here
+            // we narrow the body to its 4 possible shapes.
+            const body = req.body as {
+                target: "company" | "program" | "project" | "intern"
                 title: string
                 description: string
-                internId: string
-                projectId?: string
-                programId?: string
-                priority?: string
+                priority?: TaskPriority
                 tags?: string[]
                 dueDate: Date
-                // Already-uploaded attachments (controller uploaded them
-                // to Cloudinary before this service ran).
                 attachments?: ITaskAttachment[]
+                programId?: string
+                projectId?: string
+                internId?: string
             }
 
-            // Intern must be enrolled at this company. We do a single
-            // projection read so the 404 message can include the name.
-            const intern = await UserModel.findOne(
-                { _id: new Types.ObjectId(data.internId) },
-                { firstName: 1, lastName: 1, enrollmentCompanyId: 1, role: 1 },
-            ).lean()
-            if (!intern) throw new NotFoundException("Intern not found")
-            if (
-                !intern.enrollmentCompanyId ||
-                intern.enrollmentCompanyId.toString() !== companyId
-            ) {
+            // ---- 1. Resolve the target to a list of member internIds ----
+            // Every mode intersects with "active at this company" so
+            // we never assign a task to a stale member (e.g. someone
+            // removed from the project but the doc wasn't cleaned up).
+            let memberIds: Types.ObjectId[] = []
+            let resolvedProjectId: string | undefined = body.projectId
+            let resolvedProgramId: string | undefined = body.programId
+
+            if (body.target === "company") {
+                // Every user with an active enrollment at this company.
+                // The index `enrollments.companyId + status` makes this fast.
+                const users = await UserModel.find(
+                    {
+                        "enrollments.companyId": new Types.ObjectId(companyId),
+                        "enrollments.status": EnrollmentStatus.ACTIVE,
+                    },
+                    { _id: 1 },
+                ).lean()
+                memberIds = users.map((u) => u._id as Types.ObjectId)
+            } else if (body.target === "program") {
+                // Narrow the body: the 'program' branch guarantees programId.
+                const programId = body.programId as string
+                const program = await ProgramModel.findOne(
+                    { _id: programId, companyId },
+                    { internIds: 1 },
+                ).lean()
+                if (!program) throw new NotFoundException("Program not found")
+                const candidateIds = (program.internIds ?? []).map(
+                    (id) => new Types.ObjectId(id.toString()),
+                )
+                memberIds = await this.filterActiveAtCompany(
+                    candidateIds,
+                    companyId,
+                )
+            } else if (body.target === "project") {
+                // Narrow the body: the 'project' branch guarantees projectId.
+                const projectId = body.projectId as string
+                const project = await ProjectModel.findOne(
+                    { _id: projectId, companyId },
+                    { internIds: 1, programId: 1 },
+                ).lean()
+                if (!project) throw new NotFoundException("Project not found")
+                const candidateIds = (project.internIds ?? []).map(
+                    (id) => new Types.ObjectId(id.toString()),
+                )
+                memberIds = await this.filterActiveAtCompany(
+                    candidateIds,
+                    companyId,
+                )
+                // If the project is bound to a program, stamp it on every
+                // task row so the task hierarchy stays consistent.
+                if (project.programId && !resolvedProgramId) {
+                    resolvedProgramId = project.programId.toString()
+                }
+            } else {
+                // 'intern' — single recipient.
+                const internId = body.internId as string
+                const intern = await UserModel.findOne(
+                    { _id: new Types.ObjectId(internId) },
+                    { enrollments: 1, firstName: 1, lastName: 1 },
+                ).lean()
+                if (!intern) throw new NotFoundException("Intern not found")
+                if (!hasActiveEnrollmentAt(intern, companyId)) {
+                    throw new ApplicationError(
+                        "This user is not an active intern at this company",
+                        400,
+                    )
+                }
+                memberIds = [new Types.ObjectId(internId)]
+            }
+
+            if (memberIds.length === 0) {
                 throw new ApplicationError(
-                    "This user is not an intern at this company",
+                    "No active members to assign this task to",
                     400,
                 )
             }
 
-            // Optional project/program sanity-check. A wrong id here
-            // would silently leave the reference dangling in the task
-            // doc — fail fast instead.
-            if (data.projectId) {
-                const project = await projectRepo.findOne({
-                    filter: { _id: data.projectId, companyId },
+            // ---- 2. Create the broadcast group + N task rows ----
+            const taskGroupId = new Types.ObjectId()
+            const now = new Date()
+            const normalizedTags = (body.tags ?? []).map((t) => t.toLowerCase())
+
+            const docs = memberIds.map((internId) => ({
+                title: body.title,
+                description: body.description,
+                companyId: new Types.ObjectId(companyId),
+                internId,
+                assignedBy: new Types.ObjectId(user._id.toString()),
+                status: TaskStatus.TODO,
+                priority: body.priority ?? TaskPriority.MEDIUM,
+                tags: normalizedTags,
+                dueDate: new Date(body.dueDate),
+                attachments: body.attachments ?? [],
+                taskGroupId,
+                ...(resolvedProjectId && {
+                    projectId: new Types.ObjectId(resolvedProjectId),
+                }),
+                ...(resolvedProgramId && {
+                    programId: new Types.ObjectId(resolvedProgramId),
+                }),
+            }))
+
+            // insertMany is one round-trip; order is preserved.
+            const tasks = await taskRepo.insertMany({ data: docs })
+
+            // ---- 3. Bust caches ----
+            await Promise.all([
+                cacheFlushPrefix(`tasks:list:${companyId}`),
+                cacheFlushPrefix(`tasks:group:${taskGroupId.toString()}`),
+                ...memberIds.map((id) =>
+                    cacheFlushPrefix(`tasks:intern:${id.toString()}:${companyId}`),
+                ),
+            ])
+
+            // ---- 4. Notify each intern (one per row) ----
+            for (const t of tasks) {
+                notificationEmitter.publish(NotificationType.TASK_ASSIGNED, {
+                    recipient: t.internId.toString(),
+                    data: {
+                        taskId: t._id?.toString(),
+                        taskTitle: body.title,
+                        dueDate: body.dueDate,
+                        companyId,
+                        taskGroupId: taskGroupId.toString(),
+                    },
                 })
-                if (!project) throw new NotFoundException("Project not found")
             }
 
-            // Build the insert object without setting `undefined` on
-            // optional fields — exactOptionalPropertyTypes would reject
-            // them. Conditional spread skips them.
-            const task = await taskRepo.create({
+            // ---- 5. Response shape ----
+            // Single recipient: `{ task: {...} }` for backward compat
+            // with the original "create one task" wire format.
+            // Multi-recipient: `{ tasks: [...], count, groupId, target, members }`.
+            if (body.target === "intern") {
+                return successHandler({
+                    res,
+                    message: "Task created successfully",
+                    status: 201,
+                    data: { task: tasks[0] },
+                })
+            }
+            return successHandler({
+                res,
+                message: `Task broadcast to ${tasks.length} member(s) successfully`,
+                status: 201,
                 data: {
-                    title: data.title,
-                    description: data.description,
-                    companyId: new Types.ObjectId(companyId),
-                    internId: new Types.ObjectId(data.internId),
-                    assignedBy: new Types.ObjectId(user._id.toString()),
-                    status: TaskStatus.TODO,
-                    priority: (data.priority as any) ?? "medium",
-                    tags: (data.tags ?? []).map((t) => t.toLowerCase()),
-                    dueDate: new Date(data.dueDate),
-                    attachments: data.attachments ?? [],
-                    ...(data.projectId && {
-                        projectId: new Types.ObjectId(data.projectId),
-                    }),
-                    ...(data.programId && {
-                        programId: new Types.ObjectId(data.programId),
-                    }),
+                    tasks,
+                    count: tasks.length,
+                    groupId: taskGroupId.toString(),
+                    target: body.target,
+                    members: tasks.length,
                 },
             })
+        } catch (error) {
+            next(error)
+        }
+    }
 
-            await cacheFlushPrefix(`tasks:list:${companyId}`)
-            await cacheFlushPrefix(`tasks:intern:${data.internId}`)
+    // Helper: given a candidate internId list, keep only those who
+    // are still actively enrolled at the given company. Used by the
+    // program/project broadcast modes to skip stale memberships.
+    private filterActiveAtCompany = async (
+        candidateIds: Types.ObjectId[],
+        companyId: string,
+    ): Promise<Types.ObjectId[]> => {
+        if (candidateIds.length === 0) return []
+        const users = await UserModel.find(
+            { _id: { $in: candidateIds } },
+            { enrollments: 1 },
+        ).lean()
+        const out: Types.ObjectId[] = []
+        const cid = companyId.toString()
+        for (const u of users) {
+            const hasActive = (u.enrollments ?? []).some(
+                (e) =>
+                    e.companyId.toString() === cid &&
+                    e.status === EnrollmentStatus.ACTIVE,
+            )
+            if (hasActive) out.push(u._id as Types.ObjectId)
+        }
+        return out
+    }
 
-            // Notify the intern they've been assigned a new task.
-            notificationEmitter.publish(NotificationType.TASK_ASSIGNED, {
-                recipient: data.internId,
-                data: {
-                    taskId: (task as any)._id.toString(),
-                    taskTitle: data.title,
-                    dueDate: data.dueDate,
-                    companyId,
-                },
+    // ---- Company: list all rows in a broadcast (admin view) ----
+    // Returns every task with the given taskGroupId at this company,
+    // joined with the intern's name + email for the kanban preview.
+    listByGroup = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const companyId = req.params.companyId as string
+            const groupId = req.params.groupId as string
+            const user = res.locals.user
+            await assertOwnedCompany(companyId, user._id.toString())
+
+            if (!isObjectIdOrHexString(groupId)) {
+                throw new ApplicationError("Invalid group id", 400)
+            }
+
+            const cacheKey = `tasks:group:${groupId}:${companyId}`
+            const items = await cacheWrap(cacheKey, 30, async () => {
+                const TaskModel = (await import("../../../DB/models/task.model")).TaskModel
+                return TaskModel.find({
+                    taskGroupId: new Types.ObjectId(groupId),
+                    companyId: new Types.ObjectId(companyId),
+                })
+                    .populate("internId", "firstName lastName email")
+                    .lean()
             })
 
             return successHandler({
                 res,
-                message: "Task created successfully",
-                status: 201,
-                data: { task },
+                message: "Broadcast tasks fetched successfully",
+                data: {
+                    groupId,
+                    count: items.length,
+                    tasks: items,
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Company: bulk-update every task in a broadcast ----
+    // The admin extends the due date / raises the priority for the
+    // whole batch in one call. Status changes still go through
+    // `/transition` (state machine), and `internId` / `projectId` /
+    // `programId` / `attachments` are intentionally not in the
+    // schema — broadcast identity is immutable after creation.
+    bulkUpdateByGroup = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const companyId = req.params.companyId as string
+            const groupId = req.params.groupId as string
+            const user = res.locals.user
+            await assertOwnedCompany(companyId, user._id.toString())
+
+            if (!isObjectIdOrHexString(groupId)) {
+                throw new ApplicationError("Invalid group id", 400)
+            }
+
+            const update = req.body as Record<string, any>
+            if (Array.isArray(update.tags)) {
+                update.tags = update.tags.map((t: string) => t.toLowerCase())
+            }
+            if (update.dueDate) update.dueDate = new Date(update.dueDate)
+
+            const result = await taskRepo.updateMany({
+                filter: {
+                    taskGroupId: new Types.ObjectId(groupId),
+                    companyId: new Types.ObjectId(companyId),
+                },
+                data: update,
+            })
+
+            // The DBRepo return type is a union; only the UpdateWriteOpResult
+            // branch has matchedCount/modifiedCount. Narrow with a cast —
+            // updateMany always returns that shape in practice.
+            const r = result as { matchedCount?: number; modifiedCount?: number } | null
+            if (!r || (r.matchedCount ?? 0) === 0) {
+                throw new NotFoundException("Broadcast not found")
+            }
+
+            await Promise.all([
+                cacheFlushPrefix(`tasks:list:${companyId}`),
+                cacheFlushPrefix(`tasks:group:${groupId}`),
+            ])
+
+            return successHandler({
+                res,
+                message: "Broadcast updated successfully",
+                data: {
+                    groupId,
+                    matched: r.matchedCount ?? 0,
+                    modified: r.modifiedCount ?? 0,
+                },
             })
         } catch (error) {
             next(error)
@@ -311,7 +552,9 @@ export class TasksService {
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
                 cacheFlushPrefix(`tasks:list:${companyId}`),
-                cacheFlushPrefix(`tasks:intern:${(existing as any).internId.toString()}`),
+                cacheFlushPrefix(
+                    `tasks:intern:${(existing as any).internId.toString()}:${companyId}`,
+                ),
             ])
 
             return successHandler({
@@ -346,7 +589,9 @@ export class TasksService {
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
                 cacheFlushPrefix(`tasks:list:${companyId}`),
-                cacheFlushPrefix(`tasks:intern:${(existing as any).internId.toString()}`),
+                cacheFlushPrefix(
+                    `tasks:intern:${(existing as any).internId.toString()}:${companyId}`,
+                ),
             ])
 
             return successHandler({ res, message: "Task archived successfully" })
@@ -382,7 +627,7 @@ export class TasksService {
             if (task.status === TaskStatus.ARCHIVED) {
                 throw new ApplicationError("Cannot transition an archived task", 400)
             }
-            if (!isAllowedTransition(task.status as TaskStatus, to)) {
+            if (!canTransition('admin', task.status as TaskStatus, to)) {
                 throw new ApplicationError(
                     `Cannot transition from "${task.status}" to "${to}"`,
                     400,
@@ -414,7 +659,7 @@ export class TasksService {
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
                 cacheFlushPrefix(`tasks:list:${companyId}`),
-                cacheFlushPrefix(`tasks:intern:${task.internId.toString()}`),
+                cacheFlushPrefix(`tasks:intern:${task.internId.toString()}:${companyId}`),
             ])
 
             // Notify the intern. On approve-vs-reject we use TASK_REVIEWED
@@ -555,7 +800,7 @@ export class TasksService {
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
                 cacheFlushPrefix(`tasks:list:${companyId}`),
-                cacheFlushPrefix(`tasks:intern:${task.internId.toString()}`),
+                cacheFlushPrefix(`tasks:intern:${task.internId.toString()}:${companyId}`),
             ])
 
             return successHandler({

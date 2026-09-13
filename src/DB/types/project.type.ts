@@ -3,6 +3,7 @@
 // can have many projects; one project can have many interns.
 
 import { Types } from "mongoose"
+import { IAttachment } from "./attachment.type"
 
 export enum ProjectStatus {
     ACTIVE = 'active',
@@ -22,6 +23,11 @@ export interface IProject {
     endDate?: Date | null
     // Display metadata
     color?: string  // for the dashboard chip (hex)
+    // Optional attachment — typically a brief, spec, or mockup that
+    // explains the project to the interns assigned to it. Set on
+    // create via multipart upload; the service uploads to
+    // Cloudinary and stamps the public_id + secure_url here.
+    attachment?: IAttachment
     createdAt?: Date
     updatedAt?: Date
 }

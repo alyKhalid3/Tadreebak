@@ -103,7 +103,20 @@ export interface IUser {
     ratingCount: number
     ratingSum?: number
 
-    // ---- Intern enrollment (Phase 1 of dashboard plan) ----
+    // ---- Intern enrollments (multi-company model) ----
+    // A user can be enrolled at multiple companies. Each enrollment has
+    // its own per-company state (status, points, dates). The list is
+    // the source of truth — the legacy fields below are populated for
+    // existing users by the migration script and stay readable for
+    // backwards compat but new code MUST write to enrollments[].
+    //
+    // Indexes: see user.model.ts for the { companyId, status } compound
+    // that powers the per-company roster query.
+    enrollments?: IEnrollment[]
+    // Legacy single-company fields. Kept for the migration window.
+    // New code reads `enrollments[]` via the helper in
+    // src/utils/enrollment.ts.
+    //
     // `enrolledAt` is set when the user's first application is accepted;
     // `enrollmentCompanyId` is the only company they can be an intern at.
     // The pair is removed (set to null) when the program completes and the
@@ -117,4 +130,32 @@ export interface IUser {
     // when the program ends. `internshipEndDate = null` means "still active".
     internshipStartDate?: Date
     internshipEndDate?: Date | null
+}
+
+// One per (user, company) pair. A user can have many of these — one
+// per company they're interned at. The `status` field is the
+// lifecycle: `active` while they're working, `completed` when the
+// program ends, `withdrawn` if they leave early.
+//
+// `totalPoints` is per-company. The leaderboard (Phase 5) reads
+// `enrollments[].totalPoints` filtered by companyId — no cross-
+// company contamination.
+export enum EnrollmentStatus {
+    ACTIVE = 'active',
+    COMPLETED = 'completed',
+    WITHDRAWN = 'withdrawn',
+}
+
+export interface IEnrollment {
+    _id?: Types.ObjectId
+    companyId: Types.ObjectId
+    status: EnrollmentStatus
+    enrolledAt: Date
+    internshipStartDate: Date
+    // null while the intern is still active at this company. Set when
+    // the program ends or they withdraw.
+    internshipEndDate: Date | null
+    // Per-company points total. Defaults to 0 on enroll. Incremented
+    // by the points engine (Phase 5).
+    totalPoints: number
 }

@@ -87,6 +87,16 @@ const buildContent = (
                 title: 'Task overdue',
                 message: `"${data.taskTitle ?? 'A task'}" is overdue.`,
             }
+        case NotificationType.EVALUATION_CREATED:
+            return {
+                title: 'New evaluation recorded',
+                message: `A new evaluation has been recorded${data.periodEnd ? ` for the period ending ${new Date(data.periodEnd).toLocaleDateString()}` : ''}.`,
+            }
+        case NotificationType.EVALUATION_SHARED:
+            return {
+                title: 'Evaluation shared with you',
+                message: `Your evaluation${data.periodEnd ? ` for the period ending ${new Date(data.periodEnd).toLocaleDateString()}` : ''} is now available. Open it to see your feedback.`,
+            }
     }
 }
 

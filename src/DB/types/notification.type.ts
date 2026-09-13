@@ -18,6 +18,9 @@ export enum NotificationType {
     TASK_REVIEWED = 'task_reviewed',       // admin moved to complete
     TASK_DUE_SOON = 'task_due_soon',       // cron: dueDate - 24h
     TASK_OVERDUE = 'task_overdue',         // cron: dueDate passed, still open
+    // Phase 4 — Evaluation lifecycle.
+    EVALUATION_CREATED = 'evaluation_created', // admin submitted a new review
+    EVALUATION_SHARED = 'evaluation_shared',   // admin flipped sharedWithIntern to true
 }
 
 export interface INotification {

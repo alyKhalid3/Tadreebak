@@ -11,6 +11,12 @@ export abstract class DBRepo<T> {
     const doc = await this.model.create(data)
     return doc
   }
+  // Bulk insert for "broadcast" patterns (one task per member of a group).
+  // Wraps Mongoose's `insertMany` and returns the hydrated documents.
+  insertMany = async ({ data }: { data: Array<Partial<T>> }): Promise<HydratedDocument<T>[]> => {
+    const docs = await this.model.insertMany(data, { ordered: true })
+    return docs as HydratedDocument<T>[]
+  }
   find = async ({ filter, projection, options }:
       { filter: FilterQuery<T>, projection?: string, options?: QueryOptions<T> }): Promise<Array<FlattenMaps<HydratedDocument<T>> | HydratedDocument<T>>> => {
     const query = this.model.find(filter, projection, options)

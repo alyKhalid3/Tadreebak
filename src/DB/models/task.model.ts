@@ -20,6 +20,10 @@ const taskSchema = new mongoose.Schema<ITask>(
         internId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
         projectId: { type: Schema.Types.ObjectId, ref: "Project" },
         programId: { type: Schema.Types.ObjectId, ref: "Program" },
+        // Groups N task rows that were created as a single broadcast
+        // (target: 'company' | 'program' | 'project' | 'intern').
+        // Sparse — only the broadcast rows carry it.
+        taskGroupId: { type: Schema.Types.ObjectId, ref: "TaskGroup" },
         assignedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
         status: {
             type: String,
@@ -57,6 +61,9 @@ taskSchema.index({ companyId: 1, status: 1, dueDate: 1 })
 taskSchema.index({ companyId: 1, internId: 1, status: 1 })
 taskSchema.index({ companyId: 1, projectId: 1 })
 taskSchema.index({ internId: 1, status: 1, dueDate: 1 })
+// Broadcast lookups: "fetch all rows of this group at this company".
+// Sparse — non-broadcast tasks don't have a taskGroupId.
+taskSchema.index({ companyId: 1, taskGroupId: 1 }, { sparse: true })
 // Cron-friendly index for the "due in 24h" + "overdue" sweeps.
 taskSchema.index({ status: 1, dueDate: 1, dueSoonNotifiedAt: 1 })
 taskSchema.index({ status: 1, dueDate: 1, overdueNotifiedAt: 1 })

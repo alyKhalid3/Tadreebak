@@ -16,6 +16,12 @@ import { internsRouter } from "./modules/company/interns";
 // Phase 2 dashboard modules — tasks (kanban) + intern-side task endpoints.
 import { tasksRouter } from "./modules/company/tasks";
 import { internTasksRouter } from "./modules/intern/tasks";
+// Phase 3 dashboard modules — intern self-service (me, program, supervisor, attendance).
+import { internMeRouter } from "./modules/intern/me";
+// Phase 4 dashboard modules — evaluations + attendance dashboard.
+import { evaluationsRouter } from "./modules/company/evaluations";
+import { attendanceRouter } from "./modules/company/attendance";
+import { internEvaluationsRouter } from "./modules/intern/evaluations";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -37,8 +43,22 @@ baseRouter.use('/company/:companyId/projects', projectsRouter)
 baseRouter.use('/company/:companyId/interns', internsRouter)
 // Phase 2: kanban + task CRUD.
 baseRouter.use('/company/:companyId/tasks', tasksRouter)
-// Intern-side task endpoints (scoped to /api/v1/intern/me/tasks).
-baseRouter.use('/intern/me/tasks', internTasksRouter)
+// Phase 3: intern self-service (profile, program, supervisor, attendance).
+//   - GET /intern/me                 → list of my enrollments (picker)
+//   - GET /intern/me/:companyId/...  → per-company view
+baseRouter.use('/intern/me', internMeRouter)
+// Phase 5: intern-side task endpoints are per-company. The intern
+// is enrolled at many companies; each task lives at exactly one
+// company. The intern must be active at the company in the path
+// to see or mutate tasks there.
+baseRouter.use('/intern/me/:companyId/tasks', internTasksRouter)
+// Phase 4: evaluations + attendance. The evaluations router
+// handles GET /, /:id, PATCH, /share, plus /interns/:internId/
+// evaluations (POST) — all under the same /evaluations mount.
+baseRouter.use('/company/:companyId/evaluations', evaluationsRouter)
+baseRouter.use('/company/:companyId/attendance', attendanceRouter)
+// Phase 5: intern-side evaluations are per-company too.
+baseRouter.use('/intern/me/:companyId/evaluations', internEvaluationsRouter)
 /**
  * @swagger
  * /file-proxy/{filename}:

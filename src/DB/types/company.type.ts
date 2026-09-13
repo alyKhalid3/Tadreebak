@@ -33,4 +33,9 @@ export interface ICompany {
     ratingCount: number
     ratingSum?: number
     googleMapsUrl?: string
+    // IANA timezone string (e.g. "Africa/Cairo"). Used by the
+    // attendance module so "today" and the schedule's day-of-week
+    // line up with the company's wall clock, not UTC. Defaults
+    // to UTC when missing (legacy companies / not yet set).
+    timezone?: string
 }

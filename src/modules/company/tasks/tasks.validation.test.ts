@@ -1,9 +1,14 @@
-// Unit tests for the Tasks validation schemas.
+// Unit tests for the Tasks validation schemas (Phase 6 — broadcast).
 //
-// These schemas are the contract the controller layer enforces. Pinning
-// them with tests catches regressions like dropping the priority enum
-// or letting unbounded attachments through. Pattern matches the
-// programs/projects validation tests (Zod v4 error wording).
+// `createTaskSchema` is a discriminated union on the `target` field:
+//   - target: "company" → fan out to every active intern at this company
+//   - target: "program" → fan out to every intern in `programId`
+//   - target: "project" → fan out to every intern in `projectId`
+//   - target: "intern"  → single recipient (`internId` required)
+//
+// `bulkUpdateTaskSchema` covers the PATCH /group/:groupId endpoint.
+// `taskGroupIdParamSchema` validates the `:groupId` path param.
+// `listTasksQuerySchema` now also accepts `taskGroupId` as a filter.
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
@@ -11,6 +16,8 @@ import {
     updateTaskSchema,
     listTasksQuerySchema,
     taskIdParamSchema,
+    taskGroupIdParamSchema,
+    bulkUpdateTaskSchema,
     transitionTaskSchema,
     feedbackTaskSchema,
     submitTaskSchema,
@@ -18,26 +25,161 @@ import {
 import { TaskPriority, TaskStatus } from "../../../DB/types/task.type"
 
 const VALID_OID = "6ab1c2d3e4f5a6b7c8d9e0f1"
+const VALID_OID_2 = "6ab1c2d3e4f5a6b7c8d9e0f2"
 
-test("createTaskSchema accepts a minimal valid task", () => {
+// ============================================================
+// createTaskSchema — the 4 target modes
+// ============================================================
+
+// ----- target: 'company' (whole-intern broadcast) -----
+test("createTaskSchema accepts a minimal 'company' broadcast (no internId, no programId, no projectId)", () => {
     const parsed = createTaskSchema.parse({
-        title: "Build the login page",
-        description: "Implement JWT auth on the dashboard login route",
-        internId: VALID_OID,
+        target: "company",
+        title: "Read the handbook",
+        description: "Cover sections 1-3",
         dueDate: "2026-12-31T23:59:59.000Z",
     })
+    assert.equal(parsed.target, "company")
+    assert.equal(parsed.priority, TaskPriority.MEDIUM)
+    assert.deepEqual(parsed.tags, [])
+})
+
+test("createTaskSchema accepts a 'company' broadcast with optional projectId/programId context", () => {
+    const parsed = createTaskSchema.parse({
+        target: "company",
+        title: "AA",
+        description: "x",
+        dueDate: "2026-12-31",
+        projectId: VALID_OID,
+        programId: VALID_OID_2,
+    })
+    assert.equal(parsed.projectId, VALID_OID)
+    assert.equal(parsed.programId, VALID_OID_2)
+})
+
+test("createTaskSchema silently strips 'company' branch's accidental internId (Zod default is strip, not strict)", () => {
+    // By default Zod object schemas strip unknown keys, so an extra
+    // `internId` on a `target: "company"` body is dropped and the
+    // parse succeeds. The intern target is still reached explicitly
+    // by `target: "intern"`. This test pins that behavior so we'd
+    // notice if we ever turned on `strict()` and broke the wire format.
+    const parsed = createTaskSchema.parse({
+        target: "company",
+        internId: VALID_OID,
+        title: "AA",
+        description: "x",
+        dueDate: "2026-12-31",
+    })
+    assert.equal(parsed.target, "company")
+})
+
+// ----- target: 'program' -----
+test("createTaskSchema accepts a 'program' broadcast with programId", () => {
+    const parsed = createTaskSchema.parse({
+        target: "program",
+        programId: VALID_OID,
+        title: "AA",
+        description: "x",
+        dueDate: "2026-12-31",
+    })
+    assert.equal(parsed.target, "program")
+    assert.equal(parsed.programId, VALID_OID)
+})
+
+test("createTaskSchema rejects a 'program' broadcast without programId", () => {
+    assert.throws(
+        () =>
+            createTaskSchema.parse({
+                target: "program",
+                title: "AA",
+                description: "x",
+                dueDate: "2026-12-31",
+            }),
+        /programId|Required|Invalid/i,
+    )
+})
+
+// ----- target: 'project' -----
+test("createTaskSchema accepts a 'project' broadcast with projectId", () => {
+    const parsed = createTaskSchema.parse({
+        target: "project",
+        projectId: VALID_OID,
+        title: "AA",
+        description: "x",
+        dueDate: "2026-12-31",
+    })
+    assert.equal(parsed.target, "project")
+    assert.equal(parsed.projectId, VALID_OID)
+})
+
+test("createTaskSchema rejects a 'project' broadcast without projectId", () => {
+    assert.throws(
+        () =>
+            createTaskSchema.parse({
+                target: "project",
+                title: "AA",
+                description: "x",
+                dueDate: "2026-12-31",
+            }),
+        /projectId|Required|Invalid/i,
+    )
+})
+
+// ----- target: 'intern' (the legacy single-recipient shape) -----
+test("createTaskSchema accepts a minimal 'intern' task (the legacy shape)", () => {
+    const parsed = createTaskSchema.parse({
+        target: "intern",
+        internId: VALID_OID,
+        title: "Build the login page",
+        description: "Implement JWT auth on the dashboard login route",
+        dueDate: "2026-12-31T23:59:59.000Z",
+    })
+    assert.equal(parsed.target, "intern")
     assert.equal(parsed.title, "Build the login page")
-    assert.equal(parsed.internId, VALID_OID)
+    // Narrow the union so the test can read internId (TS won't let
+    // you access a discriminator-specific field without a guard).
+    if (parsed.target === "intern") {
+        assert.equal(parsed.internId, VALID_OID)
+    }
     assert.equal(parsed.priority, TaskPriority.MEDIUM)
     assert.deepEqual(parsed.tags, [])
     assert.equal(parsed.attachments, undefined)
 })
 
+test("createTaskSchema rejects an 'intern' task without internId", () => {
+    assert.throws(
+        () =>
+            createTaskSchema.parse({
+                target: "intern",
+                title: "AA",
+                description: "x",
+                dueDate: "2026-12-31",
+            }),
+        /internId|Required|Invalid/i,
+    )
+})
+
+test("createTaskSchema rejects a malformed internId", () => {
+    assert.throws(
+        () =>
+            createTaskSchema.parse({
+                target: "intern",
+                internId: "nope",
+                title: "AA",
+                description: "x",
+                dueDate: "2026-12-31",
+            }),
+        /Invalid id/i,
+    )
+})
+
+// ----- shared metadata (every mode) -----
 test("createTaskSchema trims the title", () => {
     const parsed = createTaskSchema.parse({
+        target: "intern",
+        internId: VALID_OID,
         title: "  Padded  ",
         description: "x",
-        internId: VALID_OID,
         dueDate: "2026-12-31",
     })
     assert.equal(parsed.title, "Padded")
@@ -47,9 +189,10 @@ test("createTaskSchema rejects a title shorter than 2 chars", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "A",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
             }),
         /Too small/i,
@@ -60,9 +203,10 @@ test("createTaskSchema rejects a title longer than 200 chars", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "x".repeat(201),
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
             }),
         /Too big/i,
@@ -73,9 +217,10 @@ test("createTaskSchema rejects an empty description", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
             }),
         /Too small/i,
@@ -86,34 +231,23 @@ test("createTaskSchema rejects a description longer than 5000 chars", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x".repeat(5001),
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
             }),
         /Too big/i,
     )
 })
 
-test("createTaskSchema rejects a malformed internId", () => {
-    assert.throws(
-        () =>
-            createTaskSchema.parse({
-                title: "AA",
-                description: "x",
-                internId: "nope",
-                dueDate: "2026-12-31",
-            }),
-        /Invalid id/i,
-    )
-})
-
 test("createTaskSchema accepts every TaskPriority enum value", () => {
     for (const p of ["high", "medium", "low"] as const) {
         const parsed = createTaskSchema.parse({
+            target: "intern",
+            internId: VALID_OID,
             title: "AA",
             description: "x",
-            internId: VALID_OID,
             dueDate: "2026-12-31",
             priority: p,
         })
@@ -125,9 +259,10 @@ test("createTaskSchema rejects an invalid priority", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
                 priority: "urgent" as any,
             }),
@@ -135,13 +270,12 @@ test("createTaskSchema rejects an invalid priority", () => {
     )
 })
 
-test("createTaskSchema lowercases & trims tags at parse time", () => {
-    // Trim happens via .trim() in the schema. Lowercasing happens in
-    // the service layer — the schema only validates per-tag length.
+test("createTaskSchema accepts up to 20 tags and trims them at parse time", () => {
     const parsed = createTaskSchema.parse({
+        target: "intern",
+        internId: VALID_OID,
         title: "AA",
         description: "x",
-        internId: VALID_OID,
         dueDate: "2026-12-31",
         tags: ["  Backend  ", "frontend"],
     })
@@ -154,9 +288,10 @@ test("createTaskSchema rejects more than 20 tags", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
                 tags: tooMany,
             }),
@@ -168,9 +303,10 @@ test("createTaskSchema rejects a tag longer than 32 chars", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
                 tags: ["x".repeat(33)],
             }),
@@ -178,36 +314,12 @@ test("createTaskSchema rejects a tag longer than 32 chars", () => {
     )
 })
 
-test("createTaskSchema accepts an optional projectId when valid", () => {
-    const parsed = createTaskSchema.parse({
-        title: "AA",
-        description: "x",
-        internId: VALID_OID,
-        projectId: VALID_OID,
-        dueDate: "2026-12-31",
-    })
-    assert.equal(parsed.projectId, VALID_OID)
-})
-
-test("createTaskSchema rejects a malformed projectId", () => {
-    assert.throws(
-        () =>
-            createTaskSchema.parse({
-                title: "AA",
-                description: "x",
-                internId: VALID_OID,
-                projectId: "nope",
-                dueDate: "2026-12-31",
-            }),
-        /Invalid id/i,
-    )
-})
-
 test("createTaskSchema coerces dueDate from a string", () => {
     const parsed = createTaskSchema.parse({
+        target: "intern",
+        internId: VALID_OID,
         title: "AA",
         description: "x",
-        internId: VALID_OID,
         dueDate: "2026-12-31",
     })
     assert.equal(parsed.dueDate instanceof Date, true)
@@ -217,9 +329,10 @@ test("createTaskSchema rejects an unparseable dueDate", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "not-a-date",
             }),
         /Invalid date/i,
@@ -228,9 +341,10 @@ test("createTaskSchema rejects an unparseable dueDate", () => {
 
 test("createTaskSchema accepts a valid attachment", () => {
     const parsed = createTaskSchema.parse({
+        target: "intern",
+        internId: VALID_OID,
         title: "AA",
         description: "x",
-        internId: VALID_OID,
         dueDate: "2026-12-31",
         attachments: [
             {
@@ -249,9 +363,10 @@ test("createTaskSchema rejects an attachment over 10 MB", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
                 attachments: [
                     {
@@ -278,15 +393,39 @@ test("createTaskSchema rejects more than 10 attachments", () => {
     assert.throws(
         () =>
             createTaskSchema.parse({
+                target: "intern",
+                internId: VALID_OID,
                 title: "AA",
                 description: "x",
-                internId: VALID_OID,
                 dueDate: "2026-12-31",
                 attachments: tooMany,
             }),
         /Too big/i,
     )
 })
+
+// ----- discriminator enforces the right id for the right target -----
+test("createTaskSchema rejects a 'company' body that has only programId (no target match)", () => {
+    // target=company is valid, but if it has programId without
+    // target=program, the schema still accepts it (programId is
+    // optional context on the 'company' branch). The reverse:
+    // target=program without programId is rejected.
+    assert.throws(
+        () =>
+            createTaskSchema.parse({
+                target: "program",
+                projectId: VALID_OID,
+                title: "AA",
+                description: "x",
+                dueDate: "2026-12-31",
+            }),
+        /programId|Required|Invalid/i,
+    )
+})
+
+// ============================================================
+// updateTaskSchema (single-task update — unchanged)
+// ============================================================
 
 test("updateTaskSchema makes every field optional", () => {
     const parsed = updateTaskSchema.parse({})
@@ -301,6 +440,10 @@ test("updateTaskSchema accepts a partial update with a valid priority", () => {
 test("updateTaskSchema rejects an invalid priority", () => {
     assert.throws(() => updateTaskSchema.parse({ priority: "urgent" as any }), /Invalid option/i)
 })
+
+// ============================================================
+// listTasksQuerySchema (added taskGroupId filter)
+// ============================================================
 
 test("listTasksQuerySchema applies defaults: sort=dueDate, page=1, limit=20", () => {
     const parsed = listTasksQuerySchema.parse({})
@@ -330,19 +473,25 @@ test("listTasksQuerySchema rejects an invalid sort", () => {
     assert.throws(() => listTasksQuerySchema.parse({ sort: "score" as any }), /Invalid option/i)
 })
 
-test("listTasksQuerySchema accepts optional internId/projectId/programId filters", () => {
+test("listTasksQuerySchema accepts optional internId/projectId/programId/taskGroupId filters", () => {
     const parsed = listTasksQuerySchema.parse({
         internId: VALID_OID,
         projectId: VALID_OID,
-        programId: VALID_OID,
+        programId: VALID_OID_2,
+        taskGroupId: VALID_OID,
     })
     assert.equal(parsed.internId, VALID_OID)
     assert.equal(parsed.projectId, VALID_OID)
-    assert.equal(parsed.programId, VALID_OID)
+    assert.equal(parsed.programId, VALID_OID_2)
+    assert.equal(parsed.taskGroupId, VALID_OID)
 })
 
 test("listTasksQuerySchema rejects a malformed internId filter", () => {
     assert.throws(() => listTasksQuerySchema.parse({ internId: "nope" }), /Invalid id/i)
+})
+
+test("listTasksQuerySchema rejects a malformed taskGroupId filter", () => {
+    assert.throws(() => listTasksQuerySchema.parse({ taskGroupId: "nope" }), /Invalid id/i)
 })
 
 test("listTasksQuerySchema accepts a search string of exactly 100 chars", () => {
@@ -368,6 +517,10 @@ test("listTasksQuerySchema rejects an invalid status", () => {
     )
 })
 
+// ============================================================
+// taskIdParamSchema
+// ============================================================
+
 test("taskIdParamSchema accepts a valid 24-char ObjectId", () => {
     const parsed = taskIdParamSchema.parse({ taskId: VALID_OID })
     assert.equal(parsed.taskId, VALID_OID)
@@ -376,6 +529,61 @@ test("taskIdParamSchema accepts a valid 24-char ObjectId", () => {
 test("taskIdParamSchema rejects a malformed id", () => {
     assert.throws(() => taskIdParamSchema.parse({ taskId: "nope" }), /Invalid id/i)
 })
+
+// ============================================================
+// taskGroupIdParamSchema (Phase 6 — broadcast routes)
+// ============================================================
+
+test("taskGroupIdParamSchema accepts a valid 24-char ObjectId", () => {
+    const parsed = taskGroupIdParamSchema.parse({ groupId: VALID_OID })
+    assert.equal(parsed.groupId, VALID_OID)
+})
+
+test("taskGroupIdParamSchema rejects a malformed groupId", () => {
+    assert.throws(() => taskGroupIdParamSchema.parse({ groupId: "nope" }), /Invalid id/i)
+})
+
+// ============================================================
+// bulkUpdateTaskSchema (Phase 6 — PATCH /group/:groupId)
+// ============================================================
+
+test("bulkUpdateTaskSchema accepts a single field update", () => {
+    const parsed = bulkUpdateTaskSchema.parse({ dueDate: "2026-12-31" })
+    assert.equal(parsed.dueDate instanceof Date, true)
+})
+
+test("bulkUpdateTaskSchema accepts a multi-field update including priority", () => {
+    const parsed = bulkUpdateTaskSchema.parse({
+        priority: "high",
+        dueDate: "2026-12-31",
+        tags: ["urgent", "all-hands"],
+    })
+    assert.equal(parsed.priority, "high")
+    assert.equal(parsed.tags?.length, 2)
+})
+
+test("bulkUpdateTaskSchema rejects an empty patch (must include at least one field)", () => {
+    assert.throws(() => bulkUpdateTaskSchema.parse({}), /At least one field/i)
+})
+
+test("bulkUpdateTaskSchema rejects an invalid priority", () => {
+    assert.throws(
+        () => bulkUpdateTaskSchema.parse({ priority: "urgent" as any }),
+        /Invalid option/i,
+    )
+})
+
+test("bulkUpdateTaskSchema rejects a title shorter than 2 chars", () => {
+    assert.throws(() => bulkUpdateTaskSchema.parse({ title: "A" }), /Too small/i)
+})
+
+test("bulkUpdateTaskSchema rejects an unparseable dueDate", () => {
+    assert.throws(() => bulkUpdateTaskSchema.parse({ dueDate: "nope" }), /Invalid date/i)
+})
+
+// ============================================================
+// transitionTaskSchema / feedbackTaskSchema / submitTaskSchema (unchanged)
+// ============================================================
 
 test("transitionTaskSchema accepts every TaskStatus", () => {
     for (const s of Object.values(TaskStatus)) {

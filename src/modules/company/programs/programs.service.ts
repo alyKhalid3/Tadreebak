@@ -2,11 +2,13 @@ import { NextFunction, Request, Response } from "express"
 import { Types } from "mongoose"
 import { ProgramRepo } from "../../../DB/repos/program.repo"
 import { ProgramStatus } from "../../../DB/types/program.type"
+import { ProjectStatus } from "../../../DB/types/project.type"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
 import { assertOwnedCompany } from "../../../utils/companyAccess"
 import { cacheDel, cacheFlushPrefix, cacheWrap } from "../../../cache/cache"
 import { UserRoleEnum } from "../../../DB/types/user.type"
+import { ProjectModel } from "../../../DB/models/project.model"
 
 const programRepo = new ProgramRepo()
 
@@ -164,6 +166,13 @@ export class ProgramsService {
      * Soft delete: keep the program row for history, mark `archived`.
      * Hard delete would orphan any tasks / evaluations that reference it
      * (Phase 2+); archive is reversible and cheap.
+     *
+     * Soft-cascade: all child projects (where programId === this
+     * program's id) are also marked `archived`. We do this in a single
+     * `updateMany` so the whole archive is one round-trip. Tasks under
+     * those projects are intentionally left alone — the admin can
+     * archive them separately if needed. (Per the user's call in the
+     * Q&A: soft-cascade to projects, not to tasks.)
      */
     archive = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -177,19 +186,48 @@ export class ProgramsService {
             })
             if (!existing) throw new NotFoundException("Program not found")
 
+            // Already archived is a no-op (idempotent endpoint).
+            if ((existing as any).status === ProgramStatus.ARCHIVED) {
+                return successHandler({
+                    res,
+                    message: "Program already archived",
+                })
+            }
+
             await programRepo.update({
                 filter: { _id: programId, companyId },
                 data: { status: ProgramStatus.ARCHIVED },
             })
 
+            // Soft-cascade: archive every project whose programId points
+            // at this program. We do NOT touch tasks — the admin can
+            // archive those manually if needed.
+            const cascade = await ProjectModel.updateMany(
+                {
+                    programId: new Types.ObjectId(programId),
+                    companyId: new Types.ObjectId(companyId),
+                    // Skip already-archived projects so the count is
+                    // meaningful and we don't churn their updatedAt.
+                    status: { $ne: ProjectStatus.ARCHIVED },
+                },
+                { $set: { status: ProjectStatus.ARCHIVED } },
+            )
+
+            // Bust every cache that could carry a stale view of either
+            // the program or the cascaded projects.
             await Promise.all([
                 cacheDel(`programs:detail:${programId}`),
                 cacheFlushPrefix(`programs:list:${companyId}`),
+                cacheFlushPrefix(`projects:list:${companyId}`),
+                cacheFlushPrefix(`projects:detail:`),
             ])
 
             return successHandler({
                 res,
-                message: "Program archived successfully",
+                message: `Program archived (${cascade.modifiedCount} project(s) cascaded)`,
+                data: {
+                    cascadedProjectCount: cascade.modifiedCount ?? 0,
+                },
             })
         } catch (error) {
             next(error)

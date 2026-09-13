@@ -14,6 +14,11 @@
 // rule changes don't change history.
 
 import { Types } from "mongoose"
+import { IAttachment } from "./attachment.type"
+
+// Re-export the shared attachment shape under the task's name so
+// existing imports of ITaskAttachment keep working without churn.
+export type ITaskAttachment = IAttachment
 
 export enum TaskStatus {
     TODO = 'todo',
@@ -31,14 +36,6 @@ export enum TaskPriority {
     LOW = 'low',
 }
 
-export interface ITaskAttachment {
-    public_id: string
-    secure_url: string
-    name: string
-    mimeType: string
-    size: number
-}
-
 export interface ITask {
     _id?: Types.ObjectId
     title: string
@@ -48,6 +45,13 @@ export interface ITask {
     projectId?: Types.ObjectId
     programId?: Types.ObjectId
     assignedBy: Types.ObjectId
+    // Groups N task rows that were created together as a "broadcast"
+    // (target: company | program | project). Every task in a broadcast
+    // shares the same taskGroupId so the admin kanban can render one
+    // card and the bulk-update endpoint can find them all in one query.
+    // For target: 'intern' (single recipient) we still set this — it
+    // costs nothing and keeps the model uniform.
+    taskGroupId?: Types.ObjectId
     status: TaskStatus
     priority: TaskPriority
     tags: string[]
