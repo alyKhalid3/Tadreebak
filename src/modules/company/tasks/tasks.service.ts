@@ -51,6 +51,22 @@ import { hasActiveEnrollmentAt } from "../../../utils/enrollment"
 const taskRepo = new TaskRepo()
 const projectRepo = new ProjectRepo()
 
+// Flush every per-company task cache. Centralized so the broadcast
+// aggregation (`tasks:broadcasts:`) never goes stale when a row-level
+// mutation happens. Use this everywhere a single task row changes —
+// NOT for read paths.
+//
+// `cacheFlushPrefix` in Upstash is a literal string-prefix match. So
+// passing `tasks:list:${companyId}` would NOT cover
+// `tasks:broadcasts:${companyId}` (different literal prefix). Two
+// explicit prefixes are needed.
+const flushCompanyTaskCaches = async (companyId: string): Promise<void> => {
+    await Promise.all([
+        cacheFlushPrefix(`tasks:list:${companyId}`),
+        cacheFlushPrefix(`tasks:broadcasts:${companyId}`),
+    ])
+}
+
 // The priority sort uses the aggregation pipeline (see `buildListPipeline`
 // below) so the DB returns a globally-correct order across pages —
 // in-memory sorts would only reorder within a single page.
@@ -161,6 +177,200 @@ export class TasksService {
                 message: "Tasks fetched successfully",
                 data: {
                     tasks: items,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        pages: Math.ceil(total / limitNum),
+                    },
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Company: list broadcasts (admin view — one card per taskGroupId) ----
+    // Phase 6.5 — aggregate the per-intern rows into one "broadcast card"
+    // per taskGroupId. The intern-side still operates on individual rows
+    // (so per-intern state machine stays independent); this is purely a
+    // read-time aggregation for the admin dashboard.
+    //
+    // Status filter semantic: "broadcasts where at least one member is in
+    // this status" (not "all members"). `?status=in_review` surfaces
+    // broadcasts that have any pending review work — much more useful
+    // for the admin than the strict "all match" interpretation.
+    listBroadcasts = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const companyId = req.params.companyId as string
+            const user = res.locals.user
+            await assertOwnedCompany(companyId, user._id.toString())
+
+            const {
+                projectId,
+                programId,
+                priority,
+                status,
+                memberId,
+                search,
+                page,
+                limit,
+            } = req.query as {
+                projectId?: string
+                programId?: string
+                priority?: TaskPriority
+                status?: TaskStatus
+                memberId?: string
+                search?: string
+                page?: number
+                limit?: number
+            }
+
+            const filter: Record<string, any> = {
+                companyId: new Types.ObjectId(companyId),
+                // Only broadcasts (rows that were created as a fan-out).
+                // Non-broadcast tasks (target: 'intern' single rows)
+                // are excluded — they belong to one intern only.
+                taskGroupId: { $exists: true, $ne: null },
+                // Archived rows never participate in a broadcast card.
+                status: { $ne: TaskStatus.ARCHIVED },
+            }
+            if (priority) filter.priority = priority
+            if (projectId) filter.projectId = new Types.ObjectId(projectId)
+            if (programId) filter.programId = new Types.ObjectId(programId)
+            // `memberId` = "broadcasts that include this intern". The
+            // pre-group filter is on individual rows; the group still
+            // pulls all members via $push below.
+            if (memberId) filter.internId = new Types.ObjectId(memberId)
+
+            const pageNum = page ?? 1
+            const limitNum = limit ?? 20
+            const skip = (pageNum - 1) * limitNum
+
+            const cacheKey = `tasks:broadcasts:${companyId}:${JSON.stringify({ projectId, programId, priority, status, memberId, search, pageNum, limitNum })}`
+            const { items, total } = await cacheWrap(cacheKey, 60, async () => {
+                const TaskModel = (await import(
+                    "../../../DB/models/task.model"
+                )).TaskModel
+
+                const pipeline: any[] = [
+                    { $match: filter },
+
+                    // Group the N rows of each broadcast into one card.
+                    // All metadata fields are identical across rows (the
+                    // service writes them the same way), so $first picks
+                    // any. We push the per-member state into `rows` and
+                    // look up the intern names below.
+                    {
+                        $group: {
+                            _id: "$taskGroupId",
+                            title: { $first: "$title" },
+                            description: { $first: "$description" },
+                            priority: { $first: "$priority" },
+                            dueDate: { $first: "$dueDate" },
+                            projectId: { $first: "$projectId" },
+                            programId: { $first: "$programId" },
+                            assignedBy: { $first: "$assignedBy" },
+                            createdAt: { $min: "$createdAt" },
+                            updatedAt: { $max: "$updatedAt" },
+                            attachments: { $first: "$attachments" },
+                            rows: {
+                                $push: {
+                                    internId: "$internId",
+                                    status: "$status",
+                                    submittedAt: "$submittedAt",
+                                    reviewedAt: "$reviewedAt",
+                                    pointsAwarded: "$pointsAwarded",
+                                },
+                            },
+                        },
+                    },
+
+                    // One batch lookup for every member's name/email/photo.
+                    { $lookup: {
+                        from: "users",
+                        localField: "rows.internId",
+                        foreignField: "_id",
+                        as: "internDocs",
+                    }},
+
+                    // Hydrate members and compute status counts in one stage.
+                    { $addFields: {
+                        taskGroupId: "$_id",
+                        totalMembers: { $size: "$rows" },
+                        members: { $map: {
+                            input: "$rows",
+                            as: "r",
+                            in: {
+                                internId: "$$r.internId",
+                                status: "$$r.status",
+                                submittedAt: "$$r.submittedAt",
+                                reviewedAt: "$$r.reviewedAt",
+                                pointsAwarded: "$$r.pointsAwarded",
+                                intern: {
+                                    $let: {
+                                        vars: {
+                                            doc: {
+                                                $arrayElemAt: [
+                                                    {
+                                                        $filter: {
+                                                            input: "$internDocs",
+                                                            cond: { $eq: ["$$this._id", "$$r.internId"] },
+                                                        },
+                                                    },
+                                                    0,
+                                                ],
+                                            },
+                                        },
+                                        in: {
+                                            firstName: "$$doc.firstName",
+                                            lastName: "$$doc.lastName",
+                                            email: "$$doc.email",
+                                            profilePicture: "$$doc.profilePicture",
+                                        },
+                                    },
+                                },
+                            },
+                        }},
+                        byStatus: {
+                            todo: { $size: { $filter: { input: "$rows", cond: { $eq: ["$$this.status", TaskStatus.TODO] } } } },
+                            in_progress: { $size: { $filter: { input: "$rows", cond: { $eq: ["$$this.status", TaskStatus.IN_PROGRESS] } } } },
+                            in_review: { $size: { $filter: { input: "$rows", cond: { $eq: ["$$this.status", TaskStatus.IN_REVIEW] } } } },
+                            complete: { $size: { $filter: { input: "$rows", cond: { $eq: ["$$this.status", TaskStatus.COMPLETE] } } } },
+                        },
+                    }},
+
+                    // Post-group filters (semantic: per-member status counts).
+                    ...(status ? [{ $match: { [`byStatus.${status}`]: { $gt: 0 } } }] : []),
+                    ...(search ? [{ $match: { title: { $regex: search, $options: "i" } } }] : []),
+
+                    { $sort: { createdAt: -1 } },
+                    {
+                        $facet: {
+                            items: [{ $skip: skip }, { $limit: limitNum }],
+                            totalCount: [{ $count: "count" }],
+                        },
+                    },
+                ]
+
+                const [result] = await TaskModel.aggregate(pipeline)
+                const cards = result?.items ?? []
+                // Strip the helper `rows` field — the response uses
+                // `members` (with intern name hydrated) instead.
+                const items = cards.map(({ rows, ...rest }: any) => rest)
+                const total = result?.totalCount?.[0]?.count ?? 0
+                return { items, total }
+            })
+
+            return successHandler({
+                res,
+                message: "Broadcasts fetched successfully",
+                data: {
+                    broadcasts: items,
                     pagination: {
                         page: pageNum,
                         limit: limitNum,
@@ -314,7 +524,7 @@ export class TasksService {
 
             // ---- 3. Bust caches ----
             await Promise.all([
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(`tasks:group:${taskGroupId.toString()}`),
                 ...memberIds.map((id) =>
                     cacheFlushPrefix(`tasks:intern:${id.toString()}:${companyId}`),
@@ -472,7 +682,7 @@ export class TasksService {
             }
 
             await Promise.all([
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(`tasks:group:${groupId}`),
             ])
 
@@ -551,7 +761,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(
                     `tasks:intern:${(existing as any).internId.toString()}:${companyId}`,
                 ),
@@ -588,7 +798,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(
                     `tasks:intern:${(existing as any).internId.toString()}:${companyId}`,
                 ),
@@ -658,7 +868,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(`tasks:intern:${task.internId.toString()}:${companyId}`),
             ])
 
@@ -722,7 +932,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
             ])
 
             return successHandler({
@@ -799,7 +1009,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(`tasks:intern:${task.internId.toString()}:${companyId}`),
             ])
 
@@ -852,7 +1062,7 @@ export class TasksService {
 
             await Promise.all([
                 cacheDel(`tasks:detail:${taskId}`),
-                cacheFlushPrefix(`tasks:list:${companyId}`),
+                flushCompanyTaskCaches(companyId),
                 cacheFlushPrefix(`tasks:intern:${task.internId.toString()}`),
             ])
 

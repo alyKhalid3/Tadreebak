@@ -76,7 +76,7 @@ attendanceRouter.get(
  *             $ref: '#/components/schemas/BulkMarkAttendance'
  *     responses:
  *       200: { description: Bulk mark complete (with per-row summary) }
- *       400: { description: Validation error (empty rows, > 500 rows, malformed ids/dates/statuses) }
+ *       400: { description: "Validation error (empty rows, > 500 rows, malformed ids/dates/statuses)" }
  *       401: { description: Unauthenticated }
  *       403: { description: Not the company owner }
  */

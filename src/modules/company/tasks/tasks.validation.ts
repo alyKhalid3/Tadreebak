@@ -106,6 +106,20 @@ export const listTasksQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
 })
 
+// Phase 6.5: aggregate the per-row kanban into one "broadcast card"
+// per taskGroupId. Same filter vocabulary as the row-level list,
+// plus `memberId` to scope to broadcasts that include a specific intern.
+export const listBroadcastsQuerySchema = z.object({
+    projectId: objectId.optional(),
+    programId: objectId.optional(),
+    priority: z.nativeEnum(TaskPriority).optional(),
+    status: z.nativeEnum(TaskStatus).optional(),
+    memberId: objectId.optional(),
+    search: z.string().trim().min(1).max(100).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
 export const taskIdParamSchema = z.object({
     taskId: objectId,
 })

@@ -15,6 +15,7 @@ import {
     createTaskSchema,
     updateTaskSchema,
     listTasksQuerySchema,
+    listBroadcastsQuerySchema,
     taskIdParamSchema,
     taskGroupIdParamSchema,
     bulkUpdateTaskSchema,
@@ -662,4 +663,73 @@ test("submitTaskSchema rejects a note over 2000 chars", () => {
 
 test("submitTaskSchema rejects an empty note (trimmed)", () => {
     assert.throws(() => submitTaskSchema.parse({ note: "   " }), /Too small/i)
+})
+
+// ============================================================
+// listBroadcastsQuerySchema — Phase 6.5 aggregation endpoint
+// ============================================================
+
+test("listBroadcastsQuerySchema applies defaults (page=1, limit=20)", () => {
+    const parsed = listBroadcastsQuerySchema.parse({})
+    assert.equal(parsed.page, 1)
+    assert.equal(parsed.limit, 20)
+})
+
+test("listBroadcastsQuerySchema accepts a memberId filter", () => {
+    const parsed = listBroadcastsQuerySchema.parse({ memberId: VALID_OID })
+    assert.equal(parsed.memberId, VALID_OID)
+})
+
+test("listBroadcastsQuerySchema accepts a projectId + programId + priority + status combo", () => {
+    const parsed = listBroadcastsQuerySchema.parse({
+        projectId: VALID_OID,
+        programId: VALID_OID_2,
+        priority: "high",
+        status: "in_review",
+    })
+    assert.equal(parsed.projectId, VALID_OID)
+    assert.equal(parsed.programId, VALID_OID_2)
+    assert.equal(parsed.priority, "high")
+    assert.equal(parsed.status, "in_review")
+})
+
+test("listBroadcastsQuerySchema rejects a malformed memberId", () => {
+    assert.throws(
+        () => listBroadcastsQuerySchema.parse({ memberId: "nope" }),
+        /Invalid id/i,
+    )
+})
+
+test("listBroadcastsQuerySchema rejects an invalid status enum", () => {
+    assert.throws(
+        () => listBroadcastsQuerySchema.parse({ status: "deleted" }),
+        /Invalid option/i,
+    )
+})
+
+test("listBroadcastsQuerySchema rejects an invalid priority enum", () => {
+    assert.throws(
+        () => listBroadcastsQuerySchema.parse({ priority: "critical" }),
+        /Invalid option/i,
+    )
+})
+
+test("listBroadcastsQuerySchema rejects limit > 100", () => {
+    assert.throws(
+        () => listBroadcastsQuerySchema.parse({ limit: "500" }),
+        /Too big/i,
+    )
+})
+
+test("listBroadcastsQuerySchema rejects a search string that's too short", () => {
+    assert.throws(
+        () => listBroadcastsQuerySchema.parse({ search: "" }),
+        /Too small/i,
+    )
+})
+
+test("listBroadcastsQuerySchema accepts a search string up to 100 chars", () => {
+    const long = "x".repeat(100)
+    const parsed = listBroadcastsQuerySchema.parse({ search: long })
+    assert.equal(parsed.search, long)
 })

@@ -1,0 +1,69 @@
+Total paths: 92
+Total schemas: 45
+
+=== Eval paths ===
+GET    /company/{companyId}/evaluations
+       summary: List evaluations written by this company
+       tags:    Dashboard - Evaluations
+       params:  5  defined
+       body:    no
+       resps:   200,400,401,403
+GET    /company/{companyId}/evaluations/dashboard
+       summary: Dashboard KPIs + 6-month attendance chart
+       tags:    Dashboard - Evaluations
+       params:  1  defined
+       body:    no
+       resps:   200,401,403
+GET    /company/{companyId}/evaluations/alerts
+       summary: At-risk interns (low attendance + overdue reviews)
+       tags:    Dashboard - Evaluations
+       params:  1  defined
+       body:    no
+       resps:   200,401,403
+POST   /company/{companyId}/interns/{internId}/evaluations
+       summary: Create an evaluation for an intern
+       tags:    Dashboard - Evaluations
+       params:  2  defined
+       body:    yes
+       resps:   201,400,401,403,404
+GET    /company/{companyId}/evaluations/{evaluationId}
+       summary: Evaluation detail (admin view — includes privateNotes)
+       tags:    Dashboard - Evaluations
+       params:  2  defined
+       body:    no
+       resps:   200,400,401,403,404
+PATCH  /company/{companyId}/evaluations/{evaluationId}
+       summary: Update an evaluation (only allowed BEFORE share)
+       tags:    Dashboard - Evaluations
+       params:  2  defined
+       body:    yes
+       resps:   200,400,401,403,404
+PATCH  /company/{companyId}/evaluations/{evaluationId}/share
+       summary: Share an evaluation with the intern
+       tags:    Dashboard - Evaluations
+       params:  2  defined
+       body:    no
+       resps:   200,400,401,403,404
+GET    /intern/me/{companyId}/evaluations
+       summary: My evaluations at this company (only sharedWithIntern)
+       tags:    Intern - Evaluations
+       params:  4  defined
+       body:    no
+       resps:   200,400,401,403,404
+
+=== Eval schemas ===
+   CreateEvaluation
+   Evaluation
+   EvaluationAlerts
+   EvaluationChartPoint
+   EvaluationDashboardResponse
+   EvaluationEnvelope
+   EvaluationKpis
+   EvaluationPeriod
+   EvaluationShared
+   InternSummary
+   ListEvaluationsResponse
+   ListMyEvaluationsResponse
+   OverdueEvaluationAlert
+   Pagination
+   UpdateEvaluation
