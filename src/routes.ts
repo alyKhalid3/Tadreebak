@@ -22,6 +22,10 @@ import { internMeRouter } from "./modules/intern/me";
 import { evaluationsRouter } from "./modules/company/evaluations";
 import { attendanceRouter } from "./modules/company/attendance";
 import { internEvaluationsRouter } from "./modules/intern/evaluations";
+// Phase 8 (P2) — Points Rules Engine.
+import { pointsRouter } from "./modules/company/points";
+// Phase 12 (P2) — Save Companies (student-side bookmark).
+import { savedCompaniesRouter } from "./modules/savedCompanies";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -57,6 +61,16 @@ baseRouter.use('/intern/me/:companyId/tasks', internTasksRouter)
 // evaluations (POST) — all under the same /evaluations mount.
 baseRouter.use('/company/:companyId/evaluations', evaluationsRouter)
 baseRouter.use('/company/:companyId/attendance', attendanceRouter)
+// Phase 8 (P2): Points Rules Engine — rules CRUD + stats + milestones.
+// Mounted last so the literal `/stats` segment wins against any
+// future `/:ruleId` / `:milestoneId` params (Express matches in
+// registration order; literal beats param).
+baseRouter.use('/company/:companyId/points', pointsRouter)
+// Phase 12 (P2) — saved companies (student bookmark) lives at /companies
+// to match BACKEND_GAPS_EN §5 exactly (NOT /company). Mounting under
+// /companies means the path `/companies/:id/save` doesn't conflict
+// with the existing /company router.
+baseRouter.use('/companies', savedCompaniesRouter)
 // Phase 5: intern-side evaluations are per-company too.
 baseRouter.use('/intern/me/:companyId/evaluations', internEvaluationsRouter)
 /**

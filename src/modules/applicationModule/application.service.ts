@@ -193,6 +193,14 @@ export class ApplicationService {
                 },
             })
 
+            // Phase 11 / P2 #E1: a new application shifts the
+            // `applicantsCount` projected onto every list response.
+            // Bust the list cache so the next read picks up the new
+            // count and the company's own page no longer shows stale
+            // "0 applicants".
+            await cacheFlushPrefix('internships:list')
+            await cacheDel(`internships:detail:${internId}`)
+
             return successHandler({ res, message: "Application submitted successfully", data: { application }, status: 201 })
         } catch (error) {
             next(error)
@@ -288,6 +296,11 @@ export class ApplicationService {
                     },
                 })
             }
+
+            // Phase 11 / P2 #E1: a withdrawn application shifts the
+            // `applicantsCount` projected onto every list response.
+            await cacheFlushPrefix('internships:list')
+            await cacheDel(`internships:detail:${application.internshipId.toString()}`)
 
             return successHandler({ res, message: "Application cancelled successfully" })
         } catch (error) {
@@ -655,6 +668,13 @@ export class ApplicationService {
                 }
 
                 await session.commitTransaction()
+
+                // Bust the cached company-ratings aggregation so the
+                // company page sees the new vote within one request.
+                // Key matches `cacheWrap` in company.service.getCompanyRatings.
+                if (targetType === RatingTarget.COMPANY) {
+                    await cacheDel(`company:ratings:${targetId.toString()}`)
+                }
 
                 notificationEmitter.publish(NotificationType.RATING_RECEIVED, {
                     targetType,

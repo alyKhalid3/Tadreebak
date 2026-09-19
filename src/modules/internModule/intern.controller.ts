@@ -6,6 +6,7 @@ import { auth } from "../../middleware/authentication.middleware";
 import { AuthZMiddleware } from "../../middleware/authorization.middleware";
 import { UserRoleEnum } from "../../DB/types/user.type";
 import { applicationRouter } from "../applicationModule";
+import { invitesRouter } from "./invites.controller";
 
 export const internRoutes = {
     base: '/internships',
@@ -25,6 +26,17 @@ const router = Router()
  * /internships:
  *   get:
  *     summary: List all internships
+ *     description: |
+ *       Each list item is now enriched with an `applicantsCount`
+ *       integer (Phase 11 / P2 #E1). Previously the front-end
+ *       had to issue N parallel requests to derive this number
+ *       per posting — the backend now joins applications in one
+ *       round trip via
+ *       `ApplicationModel.aggregate({ $group: { _id: internshipId, count } })`.
+ *
+ *       Cached for 5 min under `internships:list:{queryHash}`;
+ *       busted on application create / cancel via
+ *       `application.service`.
  *     tags: [Internships]
  *     parameters:
  *       - in: query
@@ -644,6 +656,9 @@ companyRouter.patch('/:internId/reopen', auth(), AuthZMiddleware([UserRoleEnum.C
 // Internship applications — inherits :companyId and :internId via mergeParams.
 // Exposes POST/GET on /:internId/applications and PATCH/DELETE on /:internId/applications/:applicationId.
 companyRouter.use('/:internId/applications', applicationRouter)
+// Phase 9 (P2): admin invites a student to an internship.
+// POST / GET / DELETE. Student-side accept/decline deferred.
+companyRouter.use('/:internId/invites', invitesRouter)
 
 export { companyRouter }
 export default router

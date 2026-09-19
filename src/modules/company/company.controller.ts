@@ -16,6 +16,7 @@ export const companyRoutes = {
     create: '/',
     getCompany: '/:companyId',
     updateCompany: '/:companyId',
+    getCompanyRatings: '/:companyId/ratings',
     getCompanyByName: '/name/:name',
     uploadLogo: '/:companyId/logo',
     uploadCover: '/:companyId/coverPicture',
@@ -200,11 +201,28 @@ router.post(
  *               companyEmail:
  *                 type: string
  *                 format: email
+ *               website:
+ *                 type: string
+ *                 format: uri
+ *                 description: 'Phase 10 (P2 #D). Company homepage. Optional.'
+ *               linkedin:
+ *                 type: string
+ *                 format: uri
+ *                 description: 'Phase 10 (P2 #D). LinkedIn profile URL. Optional.'
+ *               headline:
+ *                 type: string
+ *                 maxLength: 200
+ *                 description: 'Phase 10 (P2 #D). One-line tagline shown under the company name.'
+ *               foundedYear:
+ *                 type: integer
+ *                 minimum: 1800
+ *                 maximum: 2100
+ *                 description: 'Phase 10 (P2 #D). 4-digit year the company was founded. Optional.'
  *     responses:
  *       200:
  *         description: Company updated successfully
  *       400:
- *         description: Invalid company id
+ *         description: Invalid company id / validation errors
  *       404:
  *         description: Company not found
  */
@@ -237,6 +255,107 @@ router.patch(
     auth(),
     validation(CompanyValidation.updateCompany),
     companyService.updateCompany
+)
+
+/**
+ * @swagger
+ * /company/{companyId}/ratings:
+ *   get:
+ *     summary: Aggregated ratings for a company's public profile
+ *     description: |
+ *       Public, no-auth-required endpoint that powers the star
+ *       section + rating histogram + "latest reviews" block on
+ *       the student-facing company page and the company's own
+ *       profile.
+ *
+ *       Sourced from STUDENT→COMPANY ratings whose backing
+ *       application is `accepted` AND `completed`. Cancelled or
+ *       pending applications are intentionally excluded.
+ *
+ *       Cached for 60 s under `company:ratings:{companyId}`;
+ *       `application.service.rate` busts the key on submit.
+ *
+ *       Returns `404` if the company is missing, banned, pending
+ *       admin approval, or soft-deleted.
+ *     tags: [Company]
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Aggregated ratings retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     avg:
+ *                       type: number
+ *                       description: Mean of all completed-application ratings, rounded to 1 decimal. `0` when empty.
+ *                       example: 4.6
+ *                     count:
+ *                       type: integer
+ *                       description: Number of completed-application ratings counted.
+ *                       example: 37
+ *                     histogram:
+ *                       type: array
+ *                       description: Star distribution as percentages, 5→1. Always sums to exactly 100 (or all zeros when empty).
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           stars:
+ *                             type: integer
+ *                             enum: [1, 2, 3, 4, 5]
+ *                           pct:
+ *                             type: integer
+ *                             minimum: 0
+ *                             maximum: 100
+ *                       example:
+ *                         - { stars: 5, pct: 72 }
+ *                         - { stars: 4, pct: 19 }
+ *                         - { stars: 3, pct: 6 }
+ *                         - { stars: 2, pct: 2 }
+ *                         - { stars: 1, pct: 1 }
+ *                     reviews:
+ *                       type: array
+ *                       description: Up to 5 latest reviews with non-empty `comment`. Newest first.
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           student:
+ *                             type: string
+ *                             description: 'Privacy-preserving display name: "Sara M." (first name + first letter of last name). Falls back to "Anonymous" if the rater doc is missing.'
+ *                             example: Sara M.
+ *                           track:
+ *                             type: string
+ *                             description: First track on the internship that was rated. Empty string when the internship has no track or has been deleted.
+ *                             example: backend
+ *                           rating:
+ *                             type: integer
+ *                             minimum: 1
+ *                             maximum: 5
+ *                           date:
+ *                             type: string
+ *                             format: date-time
+ *                           body:
+ *                             type: string
+ *                             maxLength: 1000
+ *                 msg:
+ *                   type: string
+ *       400:
+ *         description: Invalid company id
+ *       404:
+ *         description: Company not found (also when banned, soft-deleted, or pending admin approval)
+ */
+router.get(
+    companyRoutes.getCompanyRatings,
+    companyService.getCompanyRatings
 )
 /**
  * @swagger

@@ -55,7 +55,30 @@ const options = {
             provider: { type: 'string', enum: ['system', 'google', 'facebook'], example: 'system' },
             bio: { type: 'string', example: 'Passionate software developer' },
             headline: { type: 'string', example: 'Software Engineer at Google' },
-            skills: { type: 'array', items: { type: 'string' }, example: ['JavaScript', 'Node.js'] },
+            // Skills support BOTH shapes — plain string (legacy) OR
+            // { name, source, sourceRef, description }. The shape is
+            // preserved on read; clients should be ready to handle
+            // either. New writes should prefer the object form.
+            skills: {
+              type: 'array',
+              description: 'Each entry is either a plain string or a structured skill object with provenance.',
+              items: {
+                oneOf: [
+                  { type: 'string', example: 'JavaScript' },
+                  {
+                    type: 'object',
+                    required: ['name', 'source', 'sourceRef'],
+                    properties: {
+                      name: { type: 'string', example: 'Node.js' },
+                      source: { type: 'string', enum: ['self', 'education', 'internship', 'other'] },
+                      sourceRef: { type: 'string', example: 'Backend Internship @ TechFlow' },
+                      description: { type: 'string', example: 'Built 3 production services' },
+                    },
+                  },
+                ],
+              },
+              example: ['JavaScript', { name: 'Node.js', source: 'internship', sourceRef: 'Backend @ TechFlow' }],
+            },
             categories: { type: 'array', items: { type: 'string' }, example: ['backend', 'fullstack'] },
             courses: {
               type: 'array',
@@ -63,6 +86,10 @@ const options = {
                 type: 'object',
                 properties: {
                   name: { type: 'string' },
+                  startDate: { type: 'string', format: 'date-time', nullable: true },
+                  endDate: { type: 'string', format: 'date-time', nullable: true },
+                  present: { type: 'boolean', description: 'True when the course is still in progress.' },
+                  description: { type: 'string', nullable: true },
                   certificate: {
                     type: 'object',
                     nullable: true,
@@ -72,6 +99,18 @@ const options = {
                       resourceType: { type: 'string', enum: ['image', 'raw'] },
                     },
                   },
+                },
+              },
+            },
+            socials: {
+              type: 'array',
+              description: 'Public social links the user has published on their profile.',
+              items: {
+                type: 'object',
+                required: ['platform', 'url'],
+                properties: {
+                  platform: { type: 'string', example: 'LinkedIn' },
+                  url: { type: 'string', format: 'uri', example: 'https://linkedin.com/in/aly' },
                 },
               },
             },
@@ -106,7 +145,8 @@ const options = {
                   field: { type: 'string' },
                   grade: { type: 'string' },
                   startDate: { type: 'string', format: 'date' },
-                  endDate: { type: 'string', format: 'date' }
+                  endDate: { type: 'string', format: 'date' },
+                  description: { type: 'string', nullable: true, maxLength: 1000 }
                 }
               }
             },
@@ -141,6 +181,41 @@ const options = {
           // Note: password, emailOtp, passwordOtp, newEmailOtp, newEmail,
           // isChangeCredentialsUpdated, and __v are NEVER returned to the
           // client. The toSafeUser() projection strips them.
+        },
+        CompanyRatingHistogramBucket: {
+          type: 'object',
+          description: 'Star bucket as percentage of total ratings. Buckets always sum to 100 (or all 0 when empty).',
+          properties: {
+            stars: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+            pct: { type: 'integer', minimum: 0, maximum: 100 },
+          },
+        },
+        CompanyRatingReview: {
+          type: 'object',
+          description: 'Single public review. Display name is privacy-preserving: "Sara M." — first name + first letter of last name.',
+          properties: {
+            student: { type: 'string', example: 'Sara M.' },
+            track: { type: 'string', example: 'backend' },
+            rating: { type: 'integer', minimum: 1, maximum: 5 },
+            date: { type: 'string', format: 'date-time' },
+            body: { type: 'string', maxLength: 1000 },
+          },
+        },
+        CompanyRatingStats: {
+          type: 'object',
+          description: 'Aggregated ratings for a company. Backed by `GET /company/{companyId}/ratings`.',
+          properties: {
+            avg: { type: 'number', description: 'Mean score (1 decimal). 0 when empty.', example: 4.6 },
+            count: { type: 'integer', example: 37 },
+            histogram: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/CompanyRatingHistogramBucket' },
+            },
+            reviews: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/CompanyRatingReview' },
+            },
+          },
         },
         Tokens: {
           type: 'object',
@@ -183,6 +258,14 @@ const options = {
             approvedByAdmin: { type: 'boolean', example: false },
             bannedAt: { type: 'string', format: 'date-time', nullable: true },
             deletedAt: { type: 'string', format: 'date-time', nullable: true },
+            // Phase 10 / P2 #D — public profile enrichment fields.
+            website: { type: 'string', format: 'uri', nullable: true, example: 'https://techflow.io' },
+            linkedin: { type: 'string', format: 'uri', nullable: true, example: 'https://linkedin.com/company/techflow' },
+            headline: { type: 'string', nullable: true, maxLength: 200, example: 'Building payment infra for MENA' },
+            foundedYear: { type: 'integer', nullable: true, minimum: 1800, maximum: 2100, example: 2018 },
+            // IANA timezone string. Optional — falls back to UTC at the
+            // attendance helper layer when missing.
+            timezone: { type: 'string', nullable: true, example: 'Africa/Cairo' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
           },
@@ -237,6 +320,15 @@ const options = {
             },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+            // Phase 11 / P2 #E1 — only present on list responses.
+            // Omitted from the detail endpoint because the count is
+            // already trivially derivable from
+            // `GET /company/{companyId}/internships/{internId}/applications`.
+            applicantsCount: {
+              type: 'integer',
+              description: 'Phase 11 / P2 #E1. Total applicants for this internship. Returned only on list responses.',
+              example: 7,
+            },
           },
         },
       },

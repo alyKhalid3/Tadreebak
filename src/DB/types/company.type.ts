@@ -38,4 +38,11 @@ export interface ICompany {
     // line up with the company's wall clock, not UTC. Defaults
     // to UTC when missing (legacy companies / not yet set).
     timezone?: string
+    // Public profile enrichment fields (Phase 10 / P2 #D). All
+    // optional so legacy companies stay readable without these
+    // set. The wire shape matches BACKEND_GAPS_EN §D exactly.
+    website?: string
+    linkedin?: string
+    headline?: string
+    foundedYear?: number
 }

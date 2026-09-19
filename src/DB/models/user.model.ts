@@ -44,7 +44,12 @@ const userSchema = new mongoose.Schema<IUser>({
     provider: { type: String, enum: ProviderEnum, default: ProviderEnum.SYSTEM },
     bio: { type: String, maxlength: 500 },
     headline: { type: String, maxlength: 100 },
-    skills: [{ type: String }],
+    // Skills are Mixed so each array element can be either a plain
+    // string ("React") or an object with source/sourceRef/description.
+    // Validation is enforced at the API boundary (user.validation),
+    // not in the Mongoose schema — Mongoose Mixed skips per-element
+    // cast. See user.validation.ts → skillSchema for the wire shape.
+    skills: [{ type: Schema.Types.Mixed }],
     categories: [{ type: String }],
     courses: [{
         name: { type: String, required: true },
@@ -53,6 +58,10 @@ const userSchema = new mongoose.Schema<IUser>({
             secure_url: { type: String },
             resourceType: { type: String, enum: ['image', 'raw'] },
         },
+        startDate: { type: Date },
+        endDate: { type: Date, default: null },
+        present: { type: Boolean, default: false },
+        description: { type: String, maxlength: 1000 },
     }],
     education: [{
         institution: { type: String, required: true },
@@ -60,7 +69,13 @@ const userSchema = new mongoose.Schema<IUser>({
         field: { type: String, required: true },
         grade: { type: String, required: true },
         startDate: { type: Date, required: true },
-        endDate: { type: Date }
+        endDate: { type: Date },
+        description: { type: String, maxlength: 1000 },
+    }],
+    // Public social links (LinkedIn / GitHub / portfolio / etc).
+    socials: [{
+        platform: { type: String, required: true, maxlength: 50 },
+        url: { type: String, required: true },
     }],
     experience: [{
         company: { type: String, required: true },

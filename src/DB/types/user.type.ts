@@ -53,6 +53,13 @@ export type fileAttributtes = {
 export interface ICourse {
     name: string;
     certificate?: fileAttributtes;
+    // Optional date window for the course — when the student took it.
+    // `present: true` means the course is still in progress and `endDate`
+    // is ignored in that case.
+    startDate?: Date;
+    endDate?: Date | null;
+    present?: boolean;
+    description?: string;
 }
 export interface IEducation {
     institution: string;
@@ -61,6 +68,8 @@ export interface IEducation {
     grade: string;
     startDate: Date;
     endDate?: Date;
+    // Optional free-text notes — coursework, thesis, honors, etc.
+    description?: string;
 }
 export interface IExperience {
     company: string;
@@ -68,6 +77,35 @@ export interface IExperience {
     description?: string;
     startDate: Date;
     endDate?: Date;
+}
+
+/**
+ * Where a skill came from. `sourceRef` is the friendly name of the
+ * source — the educational institution, the internship title, or a
+ * free-text label when `source === 'other'`.
+ */
+export enum SkillSourceEnum {
+    SELF = 'self',
+    EDUCATION = 'education',
+    INTERNSHIP = 'internship',
+    OTHER = 'other',
+}
+
+export interface ISkill {
+    name: string;
+    source: SkillSourceEnum;
+    sourceRef: string;
+    description?: string;
+}
+
+/**
+ * Public social links a student publishes on their profile. The
+ * `platform` field is a free-text label so we can support any
+ * platform the frontend wants (LinkedIn, GitHub, Behance, ...).
+ */
+export interface ISocial {
+    platform: string;
+    url: string;
 }
 export interface IUser {
     firstName: string;
@@ -88,10 +126,18 @@ export interface IUser {
 
     bio?: string;
     headline?: string;
-    skills?: string[];
+    // Skills support both shapes for backward compat:
+    //   - `string`         — the original plain tag ("React")
+    //   - `ISkill` object  — enriched form with `source`, `sourceRef`,
+    //                        optional `description`
+    // We accept either on PATCH and return whatever was stored on GET.
+    // New writes should prefer the object form; old data is read as-is.
+    skills?: (string | ISkill)[];
     education?: IEducation[];
     experience?: IExperience[];
     courses?: ICourse[];
+    // Public social links — LinkedIn / GitHub / portfolio / etc.
+    socials?: ISocial[];
     resume?: fileAttributtes;
     dateOfBirth?: Date;
     gender?: 'male' | 'female';

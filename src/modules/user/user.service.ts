@@ -177,14 +177,15 @@ export class UserService {
         }
     }
     /**
-     * Update one course of the authenticated user: rename it and/or replace
-     * its certificate (multipart). 404 when the course doesn't exist.
+     * Update one course of the authenticated user: rename it, edit
+     * its date window / description, and/or replace its certificate
+     * (multipart). 404 when the course doesn't exist.
      */
     updateCourse = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = res.locals.user
             const { courseIndex } = req.params
-            const { name } = req.body as { name?: string }
+            const body = req.body as Record<string, any>
             const file = req.file as Express.Multer.File | undefined
 
             if (typeof courseIndex !== 'string') {
@@ -195,12 +196,51 @@ export class UserService {
                 throw new ApplicationError('Invalid course index', 400)
             }
 
-            const trimmedName = typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+            // Pull the optional fields out of the multipart body. Date
+            // strings get coerced by the Zod layer in the controller,
+            // but we accept the strings here too — service is the
+            // single source of truth.
+            const rawName = typeof body.name === 'string' ? body.name.trim() : ''
+            const trimmedName = rawName === '' ? undefined : rawName
             if (trimmedName !== undefined && (trimmedName.length < 2 || trimmedName.length > 100)) {
                 throw new ApplicationError('Course name must be 2-100 characters', 400)
             }
-            if (!file && trimmedName === undefined) {
-                throw new ApplicationError('Nothing to update — provide a name and/or a certificate file', 400)
+
+            const present = body.present === 'true' || body.present === true || body.present === '1' || body.present === 1
+                ? true
+                : body.present === 'false' || body.present === false || body.present === '0' || body.present === 0
+                    ? false
+                    : undefined
+            const startDateRaw = body.startDate
+            const endDateRaw = body.endDate
+            const description = typeof body.description === 'string' ? body.description : undefined
+
+            const startDate = startDateRaw ? new Date(startDateRaw) : undefined
+            const endDate = endDateRaw === '' || endDateRaw === 'null' ? null
+                : endDateRaw ? new Date(endDateRaw) : undefined
+
+            if (startDate && Number.isNaN(startDate.getTime())) {
+                throw new ApplicationError('Invalid startDate', 400)
+            }
+            if (endDate && Number.isNaN(endDate.getTime())) {
+                throw new ApplicationError('Invalid endDate', 400)
+            }
+            if (startDate && endDate && endDate < startDate) {
+                throw new ApplicationError('endDate must be on or after startDate', 400)
+            }
+            if (description !== undefined && description.length > 1000) {
+                throw new ApplicationError('Course description must be at most 1000 characters', 400)
+            }
+
+            const hasAnyField =
+                trimmedName !== undefined ||
+                file !== undefined ||
+                startDate !== undefined ||
+                endDate !== undefined ||
+                present !== undefined ||
+                description !== undefined
+            if (!hasAnyField) {
+                throw new ApplicationError('Nothing to update — provide a name, certificate, dates, or description', 400)
             }
 
             const currentUser = await this.userRepo.findById({ id: user._id.toString() })
@@ -232,6 +272,11 @@ export class UserService {
             const data: Record<string, any> = {}
             if (trimmedName !== undefined) data[`courses.${index}.name`] = trimmedName
             if (certificate) data[`courses.${index}.certificate`] = certificate
+            if (startDate !== undefined) data[`courses.${index}.startDate`] = startDate
+            if (endDate !== undefined) data[`courses.${index}.endDate`] = endDate
+            if (present !== undefined) data[`courses.${index}.present`] = present
+            if (description !== undefined) data[`courses.${index}.description`] = description
+
             await this.userRepo.update({
                 filter: { _id: user._id },
                 data,
@@ -241,20 +286,23 @@ export class UserService {
             await cacheDel(`user:${user._id.toString()}`)
 
             const origin = `${req.protocol}://${req.get('host')}`
+            const updatedCourse = {
+                index,
+                name: trimmedName ?? course.name,
+                startDate: startDate ?? course.startDate ?? null,
+                endDate: endDate !== undefined ? endDate : course.endDate ?? null,
+                present: present !== undefined ? present : course.present ?? false,
+                description: description ?? course.description ?? null,
+                certificate: certificate
+                    ? this.certWithUrl(certificate, origin)
+                    : course.certificate
+                        ? this.certWithUrl(course.certificate as { public_id: string; secure_url: string; resourceType: 'image' | 'raw' }, origin)
+                        : null,
+            }
             return successHandler({
                 res,
                 message: 'Course updated successfully',
-                data: {
-                    course: {
-                        index,
-                        name: trimmedName ?? course.name,
-                        certificate: certificate
-                            ? this.certWithUrl(certificate, origin)
-                            : course.certificate
-                                ? this.certWithUrl(course.certificate as { public_id: string; secure_url: string; resourceType: 'image' | 'raw' }, origin)
-                                : null,
-                    },
-                },
+                data: { course: updatedCourse },
             })
         } catch (error) {
             next(error)
@@ -271,15 +319,43 @@ export class UserService {
     addCourse = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = res.locals.user
-            const { name } = req.body as { name?: string }
+            const body = req.body as Record<string, any>
             const file = req.file as Express.Multer.File | undefined
 
-            if (!name || typeof name !== 'string') {
+            const name = typeof body.name === 'string' ? body.name.trim() : ''
+            if (!name) {
                 throw new ApplicationError('Course name is required', 400)
             }
-            const trimmedName = name.trim()
-            if (trimmedName.length < 2 || trimmedName.length > 100) {
+            if (name.length < 2 || name.length > 100) {
                 throw new ApplicationError('Course name must be 2-100 characters', 400)
+            }
+
+            const presentRaw = body.present
+            const present = presentRaw === 'true' || presentRaw === true || presentRaw === '1' || presentRaw === 1
+                ? true
+                : presentRaw === 'false' || presentRaw === false || presentRaw === '0' || presentRaw === 0
+                    ? false
+                    : undefined
+
+            const startDateRaw = body.startDate
+            const endDateRaw = body.endDate
+            const startDate = startDateRaw ? new Date(startDateRaw) : undefined
+            const endDate = endDateRaw === '' || endDateRaw === 'null' ? null
+                : endDateRaw ? new Date(endDateRaw) : undefined
+
+            if (startDate && Number.isNaN(startDate.getTime())) {
+                throw new ApplicationError('Invalid startDate', 400)
+            }
+            if (endDate && Number.isNaN(endDate.getTime())) {
+                throw new ApplicationError('Invalid endDate', 400)
+            }
+            if (startDate && endDate && endDate < startDate) {
+                throw new ApplicationError('endDate must be on or after startDate', 400)
+            }
+
+            const description = typeof body.description === 'string' ? body.description : undefined
+            if (description !== undefined && description.length > 1000) {
+                throw new ApplicationError('Course description must be at most 1000 characters', 400)
             }
 
             // Cap at 20 courses — same as the updateProfile schema.
@@ -308,13 +384,15 @@ export class UserService {
                 }
             }
 
-            // Push the new course onto the array. We use $push with $position
-            // = length so the new course is always at the end, and the
-            // returned index is `currentUser.courses.length` (the index of
-            // the freshly added entry). If the cert upload failed, we never
-            // reach this branch — the atomic guarantee.
-            const newCourse: Record<string, any> = { name: trimmedName }
+            // Build the new course subdoc. Only set fields that have values
+            // so we don't store `present: undefined` etc. — that would
+            // round-trip as `null` over JSON.
+            const newCourse: Record<string, any> = { name }
             if (certificate) newCourse.certificate = certificate
+            if (startDate) newCourse.startDate = startDate
+            if (endDate !== undefined) newCourse.endDate = endDate
+            if (present !== undefined) newCourse.present = present
+            if (description !== undefined) newCourse.description = description
 
             const updated = await this.userRepo.update({
                 filter: { _id: user._id },
@@ -334,10 +412,108 @@ export class UserService {
                 data: {
                     course: {
                         index: newIndex,
-                        name: trimmedName,
+                        name,
+                        startDate: startDate ?? null,
+                        endDate: endDate !== undefined ? endDate : null,
+                        present: present ?? false,
+                        description: description ?? null,
                         certificate: certificate ? this.certWithUrl(certificate, origin) : null,
                     },
                 },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    /**
+     * Remove a course at `courseIndex` from the authenticated user's
+     * profile. The associated Cloudinary certificate (if any) is
+     * destroyed after the DB delete succeeds, so a failed delete
+     * never leaves an orphaned asset reference.
+     *
+     * Returns 404 when the course doesn't exist.
+     */
+    deleteCourse = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = res.locals.user
+            const { courseIndex } = req.params
+
+            if (typeof courseIndex !== 'string') {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+            const index = Number.parseInt(courseIndex, 10)
+            if (!Number.isInteger(index) || index < 0) {
+                throw new ApplicationError('Invalid course index', 400)
+            }
+
+            const currentUser = await this.userRepo.findById({ id: user._id.toString() })
+            if (!currentUser) {
+                throw new NotFoundException('User not found')
+            }
+            const course = currentUser.courses?.[index]
+            if (!course) {
+                throw new NotFoundException('Course not found')
+            }
+
+            // Read certificate info BEFORE the splice — once the array
+            // shrinks, `courses.${index}.certificate` no longer points
+            // at the right subdoc.
+            const certificateToDestroy = course.certificate?.public_id
+                ? {
+                    public_id: course.certificate.public_id,
+                    resourceType: course.certificate.resourceType ?? 'image' as const,
+                }
+                : null
+
+            // Splice the array at `index` using an aggregation pipeline
+            // update (MongoDB 4.2+). `$pull` would remove by predicate
+            // (e.g. name) which is unsafe if two courses share a name;
+            // the pipeline splice targets the exact slot. Mongoose 9
+            // accepts a plain array as the `data` payload for pipeline
+            // updates.
+            const updated = await this.userRepo.update({
+                filter: { _id: user._id },
+                data: [
+                    {
+                        $set: {
+                            courses: {
+                                $concatArrays: [
+                                    { $slice: ['$courses', index] },
+                                    {
+                                        $slice: [
+                                            '$courses',
+                                            { $add: [index, 1] },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                ],
+                options: { returnDocument: 'after' },
+            }) as any
+
+            const removed = (currentUser.courses?.length ?? 0) - ((updated?.courses?.length ?? 0))
+
+            // Bust the cached profile so the next read reflects the change.
+            await cacheDel(`user:${user._id.toString()}`)
+
+            // Destroy the Cloudinary asset AFTER the DB change so a
+            // failed DB op doesn't orphan-destroy the file.
+            if (certificateToDestroy) {
+                try {
+                    await destroySingleFile(certificateToDestroy.public_id, certificateToDestroy.resourceType)
+                } catch (cleanupErr) {
+                    // Best-effort: log but don't fail the request. The
+                    // user already sees their course gone.
+                    console.warn('Failed to destroy course certificate on delete:', cleanupErr)
+                }
+            }
+
+            return successHandler({
+                res,
+                message: removed > 0 ? 'Course deleted successfully' : 'Course not found',
+                data: { removedCount: removed },
             })
         } catch (error) {
             next(error)

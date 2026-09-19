@@ -33,6 +33,14 @@ export const createCompany = z.object({
         mimetype: z.string(),
         size: z.number()
     }),
+    // Phase 10 / P2 #D — public profile enrichment fields.
+    // Optional on create so existing flows don't break; the
+    // front-end will populate them in the "Edit profile"
+    // screen later.
+    website: z.string().url().optional(),
+    linkedin: z.string().url().optional(),
+    headline: z.string().max(200).optional(),
+    foundedYear: z.coerce.number().int().min(1800).max(2100).optional(),
 })
 
 export const updateCompany = z.object({
@@ -43,6 +51,11 @@ export const updateCompany = z.object({
     location: companyLocationSchema.optional(),
     numberOfEmployees: z.string().optional(),
     companyEmail: z.email().optional(),
+    // Phase 10 / P2 #D — public profile enrichment fields.
+    website: z.string().url().optional(),
+    linkedin: z.string().url().optional(),
+    headline: z.string().max(200).optional(),
+    foundedYear: z.coerce.number().int().min(1800).max(2100).optional(),
 })
 
 export const listCompanyQuerySchema = z.object({

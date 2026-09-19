@@ -46,6 +46,20 @@ export const companySchema = new mongoose.Schema<ICompany>({
     // missing (so legacy companies don't need a backfill to keep
     // working).
     timezone: { type: String },
+    // Phase 10 / P2 #D — public profile enrichment fields.
+    // All optional so legacy companies stay valid without them.
+    //   website      — company homepage (validated as a URL)
+    //   linkedin     — LinkedIn URL (validated as a URL, no
+    //                  strict LinkedIn-only check so the company
+    //                  can paste any profile URL)
+    //   headline     — one-line tagline shown under the company
+    //                  name on the public page
+    //   foundedYear  — 4-digit year; bounded so we don't accept
+    //                  "0025" or "30000"
+    website: { type: String },
+    linkedin: { type: String },
+    headline: { type: String, maxlength: 200 },
+    foundedYear: { type: Number, min: 1800, max: 2100 },
 }, { timestamps: true });
 
 // Link-out to Google Maps when coordinates exist. Present in every serialized

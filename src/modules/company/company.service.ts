@@ -12,6 +12,9 @@ import { notificationEmitter } from "../../utils/notifications/notificationEvent
 import { NotificationType } from "../../DB/types/notification.type"
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache"
 import { applyCompanyVirtuals } from "../../utils/companyVirtuals"
+import { RatingModel } from "../../DB/models/rating.model"
+import { RatingFrom, RatingTarget } from "../../DB/types/rating.type"
+import { computeRatingStats, type RatingRow } from "../../utils/ratings"
 
 export class CompanyService {
     private companyRepo = new CompanyRepo()
@@ -201,6 +204,127 @@ const company = await cacheWrap(
             }
 
             return successHandler({ res, message: "Company fetched successfully", data: { company } })
+        } catch (error) {
+            next(error)
+        }
+    }
+    /**
+     * Aggregated ratings for a company's public profile. Drives
+     * the star section + histogram + "latest reviews" block on
+     * `GET /company/:id` (frontend-side render). Sourced from
+     * `RatingModel` filtered to STUDENT→COMPANY ratings whose
+     * backing application is `accepted` AND `completed` —
+     * cancelled / pending applications are intentionally
+     * excluded.
+     *
+     * The aggregation `$lookup`s three collections in one round
+     * trip (Application → verify completed; User → display name;
+     * Internship → track). Pure stats are computed in
+     * `src/utils/ratings.ts` so they can be unit-tested without
+     * a MongoDB fixture.
+     *
+     * Cached for 60s under `company:ratings:{companyId}`. A new
+     * rating busts this key from `application.service.rate` —
+     * see the comment there for the exact key.
+     */
+    getCompanyRatings = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError('Invalid company id', 400)
+            }
+            const companyObjectId = mongoose.Types.ObjectId.createFromHexString(companyId as string)
+
+            const data = await cacheWrap(
+                `company:ratings:${companyId}`,
+                60,
+                async () => {
+                    // 404 if the company doesn't exist (or is banned /
+                    // pending / deleted). Reuse the same predicates
+                    // getCompany uses so the public surface is
+                    // consistent.
+                    const company = await this.companyRepo.findOne({
+                        filter: { _id: companyObjectId },
+                        options: { lean: true },
+                    })
+                    if (
+                        !company ||
+                        (company as any).deletedAt ||
+                        (company as any).bannedAt ||
+                        !(company as any).approvedByAdmin
+                    ) {
+                        throw new NotFoundException('Company not found')
+                    }
+
+                    // One pipeline, three $lookups, sorted newest first.
+                    // `preserveNullAndEmptyArrays` keeps ratings whose
+                    // backing user / internship has been deleted — they
+                    // still count toward avg + histogram but render
+                    // as "Anonymous" / empty track on the reviews card.
+                    const rows = await RatingModel.aggregate([
+                        {
+                            $match: {
+                                from: RatingFrom.STUDENT,
+                                targetType: RatingTarget.COMPANY,
+                                targetId: companyObjectId,
+                            },
+                        },
+                        // Verify the application is completed + accepted
+                        // before counting the rating. Cancelled apps
+                        // never reach the user-facing stats.
+                        {
+                            $lookup: {
+                                from: 'applications',
+                                localField: 'applicationId',
+                                foreignField: '_id',
+                                as: 'app',
+                            },
+                        },
+                        { $unwind: '$app' },
+                        {
+                            $match: {
+                                'app.completed': true,
+                                'app.status': 'accepted',
+                            },
+                        },
+                        // Display name (privacy-preserving "Sara M.").
+                        {
+                            $lookup: {
+                                from: 'users',
+                                localField: 'raterId',
+                                foreignField: '_id',
+                                as: 'rater',
+                            },
+                        },
+                        { $unwind: { path: '$rater', preserveNullAndEmptyArrays: true } },
+                        // First track on the internship (e.g. "backend").
+                        {
+                            $lookup: {
+                                from: 'internships',
+                                localField: 'app.internshipId',
+                                foreignField: '_id',
+                                as: 'internship',
+                            },
+                        },
+                        { $unwind: { path: '$internship', preserveNullAndEmptyArrays: true } },
+                        { $sort: { createdAt: -1 } },
+                    ])
+
+                    const ratingRows: RatingRow[] = rows.map((r: any) => ({
+                        score: r.score,
+                        comment: r.comment ?? null,
+                        createdAt: r.createdAt,
+                        rater: r.rater
+                            ? { firstName: r.rater.firstName, lastName: r.rater.lastName }
+                            : null,
+                        internship: r.internship ? { track: r.internship.track } : null,
+                    }))
+
+                    return computeRatingStats(ratingRows, { maxReviews: 5 })
+                },
+            )
+
+            return successHandler({ res, message: 'ok', data })
         } catch (error) {
             next(error)
         }

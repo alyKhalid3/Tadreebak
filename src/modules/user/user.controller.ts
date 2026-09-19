@@ -20,6 +20,7 @@ export const userRoutes = {
     uploadCourseCertificate: '/upload/course-certificate/:courseIndex',
     addCourse: '/courses',
     updateCourse: '/courses/:courseIndex',
+    deleteCourse: '/courses/:courseIndex',
     myApplications: '/:userId/applications',
     getProfile: '/:userId',
     update: '/:userId',
@@ -39,6 +40,11 @@ const applicationService = new ApplicationService()
  *       is computed from completed internships — `rating`, `feedback` and
  *       `feedbackCreatedAt` are only populated after both parties submit
  *       a rating (or 14 days after completion).
+ *
+ *       `skills` returns the same shape as stored — a mix of plain
+ *       strings (legacy) and `{ name, source, sourceRef, description }`
+ *       objects. `socials[]` contains the public links the user has
+ *       published (LinkedIn / GitHub / portfolio / ...).
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
@@ -72,6 +78,29 @@ router.get(userRoutes.getProfile, auth(), userService.getProfile)
  * /user/{userId}:
  *   patch:
  *     summary: Update user profile
+ *     description: |
+ *       Update the authenticated user's profile. All fields are optional —
+ *       send only what changes. `experience` is read-only (computed from
+ *       completed internships).
+ *
+ *       `skills` accepts BOTH a plain string and an object form in the
+ *       same array (backward-compatible — existing clients still send
+ *       `string[]`, new code can use the richer object form):
+ *
+ *       ```json
+ *       {
+ *         "skills": [
+ *           "React",
+ *           { "name": "Node.js", "source": "internship", "sourceRef": "Backend @ TechFlow", "description": "Built 3 services" }
+ *         ]
+ *       }
+ *       ```
+ *
+ *       `source` is one of: `self | education | internship | other`.
+ *
+ *       `socials` is the new public-links section (LinkedIn / GitHub /
+ *       portfolio / ...). `platform` is free-text, `url` must be a
+ *       parseable URL.
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
@@ -90,18 +119,46 @@ router.get(userRoutes.getProfile, auth(), userService.getProfile)
  *             properties:
  *               firstName:
  *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 20
  *               lastName:
  *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 20
  *               phone:
  *                 type: string
+ *                 description: Phone number. Persisted as `phoneNumber`.
  *               bio:
  *                 type: string
+ *                 maxLength: 500
  *               headline:
  *                 type: string
+ *                 maxLength: 100
  *               skills:
  *                 type: array
+ *                 maxItems: 50
  *                 items:
- *                   type: string
+ *                   oneOf:
+ *                     - type: string
+ *                       minLength: 1
+ *                       maxLength: 80
+ *                     - type: object
+ *                       required: [name, source, sourceRef]
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           minLength: 1
+ *                           maxLength: 80
+ *                         source:
+ *                           type: string
+ *                           enum: [self, education, internship, other]
+ *                         sourceRef:
+ *                           type: string
+ *                           minLength: 1
+ *                           maxLength: 200
+ *                         description:
+ *                           type: string
+ *                           maxLength: 500
  *               dateOfBirth:
  *                 type: string
  *                 format: date-time
@@ -123,17 +180,62 @@ router.get(userRoutes.getProfile, auth(), userService.getProfile)
  *                   properties:
  *                     name:
  *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date-time
+ *                     endDate:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     present:
+ *                       type: boolean
+ *                     description:
+ *                       type: string
+ *                       maxLength: 1000
  *                   description: |
  *                     Student courses. To add a course together with its
- *                     certificate in one call, use POST /user/courses (multipart)
- *                     instead of PATCH. This PATCH endpoint can still be used to
- *                     add a course without a certificate.
+ *                     certificate in one call, use POST /user/courses
+ *                     (multipart) instead of PATCH. This PATCH endpoint can
+ *                     still be used to add a course without a certificate.
  *                 maxItems: 20
  *               education:
  *                 type: array
  *                 items:
  *                   type: object
- *     description: The experience section is read-only and is derived from completed internships.
+ *                   required: [institution, degree, field, grade, startDate]
+ *                   properties:
+ *                     institution:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *                     grade:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date-time
+ *                     endDate:
+ *                       type: string
+ *                       format: date-time
+ *                     description:
+ *                       type: string
+ *                       maxLength: 1000
+ *               socials:
+ *                 type: array
+ *                 maxItems: 10
+ *                 items:
+ *                   type: object
+ *                   required: [platform, url]
+ *                   properties:
+ *                     platform:
+ *                       type: string
+ *                       minLength: 1
+ *                       maxLength: 50
+ *                       description: "Free-text platform name: LinkedIn, GitHub, Behance, ..."
+ *                     url:
+ *                       type: string
+ *                       format: uri
  *     responses:
  *       200:
  *         description: Profile updated successfully
@@ -307,6 +409,10 @@ router.post(
  *       `/user/upload/course-certificate/{courseIndex}`. If the certificate
  *       upload fails, the course is NOT created (atomic — no orphan course
  *       pointing at a missing file).
+ *
+ *       Optional date-window and description fields are accepted as
+ *       multipart text fields. `present: true` means "still in progress"
+ *       and `endDate` is ignored in that case.
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
@@ -323,6 +429,22 @@ router.post(
  *                 minLength: 2
  *                 maxLength: 100
  *                 description: Course name
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: When the course started (optional)
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *                 description: When the course ended. Ignored when `present=true`.
+ *               present:
+ *                 type: boolean
+ *                 description: True if the course is still ongoing.
+ *               description:
+ *                 type: string
+ *                 maxLength: 1000
+ *                 description: Free-text notes about the course.
  *               file:
  *                 type: string
  *                 format: binary
@@ -343,6 +465,19 @@ router.post(
  *                       properties:
  *                         index: { type: integer, description: "Index of the new course in the user's `courses` array" }
  *                         name: { type: string }
+ *                         startDate:
+ *                           type: string
+ *                           format: date-time
+ *                           nullable: true
+ *                         endDate:
+ *                           type: string
+ *                           format: date-time
+ *                           nullable: true
+ *                         present:
+ *                           type: boolean
+ *                         description:
+ *                           type: string
+ *                           nullable: true
  *                         certificate:
  *                           type: object
  *                           nullable: true
@@ -372,13 +507,16 @@ router.post(
  * @swagger
  * /user/courses/{courseIndex}:
  *   patch:
- *     summary: Update one of the user's courses (rename and/or replace certificate)
+ *     summary: Update one of the user's courses (rename, edit dates, description, and/or replace certificate)
  *     description: |
  *       Updates the course at `courseIndex` in the authenticated user's
- *       `courses` array. Both fields are optional — send only what changes.
+ *       `courses` array. Every field is optional — send only what changes.
  *       Replacing the certificate uploads the new asset first and destroys
  *       the old Cloudinary file afterwards, so a failed upload leaves the
  *       course untouched. Returns 404 when no course exists at that index.
+ *
+ *       `present: true` means "still in progress" and `endDate` is
+ *       ignored. To clear `endDate`, send the empty string.
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
@@ -401,6 +539,21 @@ router.post(
  *                 minLength: 2
  *                 maxLength: 100
  *                 description: New course name (optional)
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: New start date (optional)
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *                 description: New end date. Ignored when `present=true`. Pass empty string to clear.
+ *               present:
+ *                 type: boolean
+ *                 description: True if the course is still ongoing.
+ *               description:
+ *                 type: string
+ *                 maxLength: 1000
  *               file:
  *                 type: string
  *                 format: binary
@@ -421,6 +574,19 @@ router.post(
  *                       properties:
  *                         index: { type: integer }
  *                         name: { type: string }
+ *                         startDate:
+ *                           type: string
+ *                           format: date-time
+ *                           nullable: true
+ *                         endDate:
+ *                           type: string
+ *                           format: date-time
+ *                           nullable: true
+ *                         present:
+ *                           type: boolean
+ *                         description:
+ *                           type: string
+ *                           nullable: true
  *                         certificate:
  *                           type: object
  *                           nullable: true
@@ -433,7 +599,7 @@ router.post(
  *                               description: Authenticated file-proxy URL (PDF certificates only); fetch it with the bearer token to open the PDF inline, same as the CV/resume.
  *                 msg: { type: string }
  *       400:
- *         description: Invalid course index / invalid name / nothing to update / unsupported file type
+ *         description: Invalid course index / invalid name / nothing to update / invalid date window / unsupported file type
  *       401:
  *         description: Missing or invalid bearer token
  *       404:
@@ -445,6 +611,51 @@ router.patch(
     uploadFile({ fileType: [...fileTypes.images, ...fileTypes.pdf], storeIn: StoreIn.DISK }).single('file'),
     userService.updateCourse
 )
+
+/**
+ * @swagger
+ * /user/courses/{courseIndex}:
+ *   delete:
+ *     summary: Delete one of the user's courses
+ *     description: |
+ *       Removes the course at `courseIndex` from the authenticated user's
+ *       `courses` array. The associated Cloudinary certificate (if any)
+ *       is destroyed after the DB delete succeeds, so a failed delete
+ *       never leaves the user's profile pointing at a missing asset.
+ *       Returns 404 when no course exists at that index.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseIndex
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *     responses:
+ *       200:
+ *         description: Course deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     removedCount:
+ *                       type: integer
+ *                       description: Number of courses removed (1 on success, 0 when not found).
+ *                 msg: { type: string }
+ *       400:
+ *         description: Invalid course index
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       404:
+ *         description: User or course not found
+ */
+router.delete(userRoutes.deleteCourse, auth(), userService.deleteCourse)
 
 /**
  * @swagger

@@ -17,6 +17,8 @@ import { NotificationType } from "../../DB/types/notification.type";
 import { cacheWrap, cacheDel, cacheFlushPrefix } from "../../cache/cache";
 import { applyCompanyVirtuals } from "../../utils/companyVirtuals";
 import { isBillingEnabled } from "../../utils/featureFlags";
+import { ApplicationModel } from "../../DB/models/application.model";
+import { mergeApplicantsCount } from "../../utils/internshipCounts";
 import { SavedInternshipRepo } from "../../DB/repos/savedInternship.repo";
 
 export class InternService {
@@ -352,7 +354,29 @@ export class InternService {
                 // `googleMapsUrl` so the frontend can deep-link to maps
                 // without a separate company fetch.
                 applyCompanyVirtuals(items)
-                return { internships: items, total: totalCount }
+
+                // Phase 11 / P2 #E1: prepend `applicantsCount` per item in
+                // one round trip. Previously the front-end made N parallel
+                // requests (one per posting) to compute this; the
+                // `ApplicationModel.aggregate` below collapses that into
+                // a single `$group` over the page's internships.
+                //
+                // Busted by `application.service` mutations via
+                // `cacheFlushPrefix('internships:list')` — covered in the
+                // `test:detail` cache key bust as well.
+                const ids = items.map((i: any) => i._id)
+                const counts = ids.length === 0
+                    ? []
+                    : await ApplicationModel.aggregate([
+                        { $match: { internshipId: { $in: ids } } },
+                        { $group: { _id: '$internshipId', count: { $sum: 1 } } },
+                    ])
+                const merged = mergeApplicantsCount(
+                    items as any[],
+                    counts as any[],
+                )
+
+                return { internships: merged, total: totalCount }
             })
 
             return successHandler({
