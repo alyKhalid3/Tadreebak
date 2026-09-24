@@ -22,6 +22,7 @@ import { companyModel } from "../../DB/models/company.model";
 import { UserModel } from "../../DB/models/user.model";
 import { UserRoleEnum } from "../../DB/types/user.type";
 import { cacheDel, cacheFlushPrefix } from "../../cache/cache";
+import { certificateService } from "../certificates/certificates.service";
 
 export class ApplicationService {
     private applicationRepo = new ApplicationRepo()
@@ -583,7 +584,22 @@ export class ApplicationService {
                 options: { returnDocument: "after" },
             })
 
-            return successHandler({ res, message: "Application marked as completed", data: { application: updated } })
+            // Phase 17 / P5 #11: mint the public verification code
+            // the moment the application flips to completed. The
+            // front-end uses this to render a sharable URL like
+            // `<origin>/certificate?code=...`; the public endpoint
+            // `GET /certificates/:code` will validate it via HMAC
+            // + a live DB lookup against this row.
+            const certificateCode = certificateService.mintForApplication(applicationId as string)
+
+            return successHandler({
+                res,
+                message: "Application marked as completed",
+                data: {
+                    application: updated,
+                    certificate: { code: certificateCode },
+                },
+            })
         } catch (error) {
             next(error)
         }

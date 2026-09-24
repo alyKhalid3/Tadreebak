@@ -763,6 +763,67 @@
           }
         }
       },
+      "CertificateVerified": {
+        "type": "object",
+        "description": "A verified certificate. Same shape regardless of which underlying application was looked up.",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "student": {
+            "type": "object",
+            "properties": {
+              "firstName": {
+                "type": "string"
+              },
+              "lastInitial": {
+                "type": "string",
+                "description": "First letter of the student's last name + dot, e.g. \"M.\". Empty when the student has no last name on file. Privacy-preserving — the full last name is never exposed."
+              }
+            }
+          },
+          "internship": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "company": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string",
+                "nullable": true,
+                "format": "uri"
+              }
+            }
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CertificateInvalid": {
+        "type": "object",
+        "description": "Returned for every verification failure (forged, tampered, unknown, not-yet-completed). The shape is intentionally identical across all failure modes so an attacker can't fingerprint which dimension failed.",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
       "MarkAttendance": {
         "type": "object",
         "required": [
@@ -2370,6 +2431,35 @@
           }
         }
       },
+      "ContactForm": {
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "message"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 2000
+          }
+        }
+      },
       "ListMyEvaluationsResponse": {
         "type": "object",
         "description": "Response shape of `GET /intern/me/:companyId/evaluations`.\nItems are `EvaluationShared` (the admin's `Evaluation`\nwith `privateNotes` stripped). Pagination is the shared\n`Pagination` schema from the admin module.\n",
@@ -2463,6 +2553,104 @@
             "type": "string",
             "maxLength": 500,
             "description": "Optional short message the admin can attach to the invite."
+          }
+        }
+      },
+      "NewsletterSubscribe": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "CreateReport": {
+        "type": "object",
+        "required": [
+          "targetType",
+          "targetId",
+          "reason"
+        ],
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "company",
+              "user",
+              "internship"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "description": "24-char ObjectId of the target."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000,
+            "description": "Free-text explanation shown to the admin queue."
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "reporterId": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "company",
+              "user",
+              "internship"
+            ]
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "reviewed",
+              "dismissed",
+              "action_taken"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "StreakState": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of consecutive check-in days. Resets to 1 on a gap of 2+ days."
+          },
+          "last": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "UTC timestamp of the most recent check-in. `null` if never checked in."
           }
         }
       }
@@ -2839,7 +3027,33 @@
         ],
         "responses": {
           "200": {
-            "description": "Application marked as completed"
+            "description": "Application marked as completed. The response now includes a `certificate.code` (HMAC-SHA256 + base64url) the front-end can drop into a `<origin>/certificate?code=...` URL for public verification.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "application": {
+                          "type": "object"
+                        },
+                        "certificate": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "description": "HMAC-SHA256(base64url) signed verification code. Pass it to `GET /certificates/{code}` to verify."
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "description": "Application is not accepted / already completed"
@@ -4045,6 +4259,57 @@
         "responses": {
           "200": {
             "description": "Redirect acknowledged"
+          }
+        }
+      }
+    },
+    "/certificates/{code}": {
+      "get": {
+        "summary": "Verify a public internship-completion certificate",
+        "description": "Public, no auth required. The `code` is a base64url-encoded\nHMAC-SHA256 token minted by `markCompleted` — anyone with\nthe URL can verify, but only the platform can mint.\n\nThe endpoint collapses every failure mode (forged signature,\nunknown application, application not yet completed, deleted\napplication) into a single `{ valid: false }` response so an\nattacker can't fingerprint which dimension failed.\n\nOn success, the response exposes only the narrow public\nprojection: student's first name + last initial, internship\ntitle, company name + logo URL, and the canonical completion\ntimestamp. No email, no full last name, no internal IDs.\n",
+        "tags": [
+          "Certificates"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "HMAC-signed base64url `<payload>.<signature>` token."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CertificateVerified"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CertificateInvalid"
+                        }
+                      ]
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid verification code format (URL param doesn't even look like a code)"
           }
         }
       }
@@ -8006,6 +8271,51 @@
         }
       }
     },
+    "/contact": {
+      "post": {
+        "summary": "Submit the public contact form",
+        "description": "Public, no auth required. Validates the body and emails\nit to the support inbox via the existing SMTP\ntransporter. Rate limiting is delegated to\n`express-rate-limit` (configured at the app level).\n",
+        "tags": [
+          "Contact"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "nullable": true,
+                      "example": null
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "Message received"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (missing/invalid name, email, message)"
+          }
+        }
+      }
+    },
     "/intern/me/{companyId}/evaluations": {
       "get": {
         "summary": "My evaluations at this company (only sharedWithIntern)",
@@ -9139,6 +9449,63 @@
         }
       }
     },
+    "/internships/stats/by-category": {
+      "get": {
+        "summary": "Aggregated count of open internships per `track` (Phase 13 / P3",
+        "description": "Powers the home page's \"Browse by Category\" section.\nCounts every open internship once per `track` it carries\n(a single internship may contribute to multiple\ncategories). Public, no auth required.\n\nCached for 60 s; busted on create / close / reopen by\nthe existing `internships:list` flush (separate keys,\nbut the prefix flush covers both — `internships:stats`).\n",
+        "tags": [
+          "Internships"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "includeClosed",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Pass `true` to count closed internships too. Default: open only."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stats fetched successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "counts": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          },
+                          "example": {
+                            "frontend": 42,
+                            "backend": 28,
+                            "mobile": 19
+                          }
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internships/{internId}/save": {
       "post": {
         "summary": "Save (bookmark) an internship (student only)",
@@ -10124,6 +10491,51 @@
         }
       }
     },
+    "/newsletter/subscribe": {
+      "post": {
+        "summary": "Subscribe an email to the newsletter",
+        "description": "Public, no auth. Validates the email address and\npublishes a confirmation event. When the email-list\nbackend lands, this is also where the actual subscribe\ncall will live.\n",
+        "tags": [
+          "Newsletter"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewsletterSubscribe"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subscribed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "nullable": true,
+                      "example": null
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "Subscribed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid email"
+          }
+        }
+      }
+    },
     "/notifications": {
       "get": {
         "summary": "List the authenticated user's notifications",
@@ -10238,6 +10650,61 @@
           },
           "404": {
             "description": "Notification not found"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "summary": "File a report about a company, user, or internship",
+        "description": "Authenticated. Records the report against the reporter's\n`reporterId` with default `status: 'open'`. We don't\nverify the target still exists — a report on a stale\nid is still useful for the audit log; the admin-side\nqueue can filter those.\n",
+        "tags": [
+          "Reports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Report received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "report": {
+                          "$ref": "#/components/schemas/Report"
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
           }
         }
       }
@@ -11313,6 +11780,117 @@
           },
           "403": {
             "description": "You can only view your own applications"
+          }
+        }
+      }
+    },
+    "/user/{userId}/checkin": {
+      "post": {
+        "summary": "Daily streak check-in (student, self-only)",
+        "description": "Records a streak check-in for the authenticated student.\nSelf-only — the `:userId` must match the bearer token's\nsubject. Calling twice in the same UTC day is a no-op\nsuccess; calling after a gap resets the counter to 1.\n\nAuth: STUDENT role only. The 'streak' feature is part of\nthe student dashboard (P5 #12).\n",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streak after this check-in (idempotent if same day)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "streak": {
+                          "$ref": "#/components/schemas/StreakState"
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Caller can only check in for themselves"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      },
+      "get": {
+        "summary": "Read the current streak state (student, self-only)",
+        "description": "Returns `{ data: { streak: { count, last } } }` for the\nauthenticated student. Self-only.\n\nCached for 60 s under `user:streak:{userId}`; busted on\ncheck-in.\n",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current streak state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "streak": {
+                          "$ref": "#/components/schemas/StreakState"
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Caller can only view their own streak"
           }
         }
       }

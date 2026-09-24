@@ -126,6 +126,14 @@ export interface IUser {
 
     bio?: string;
     headline?: string;
+    // Phase 17 / P5 #12 — daily streak check-in.
+    // `streakCount` is the number of consecutive days the student
+    // has hit POST /user/:id/checkin. `lastCheckInAt` is the UTC
+    // timestamp of the most recent check-in (the service
+    // subtracts a day window from this to decide whether to
+    // increment or reset the streak).
+    streakCount?: number;
+    lastCheckInAt?: Date | null;
     // Skills support both shapes for backward compat:
     //   - `string`         — the original plain tag ("React")
     //   - `ISkill` object  — enriched form with `source`, `sourceRef`,

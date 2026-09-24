@@ -291,7 +291,23 @@ router.post(
  *           type: string
  *     responses:
  *       200:
- *         description: Application marked as completed
+ *         description: Application marked as completed. The response now includes a `certificate.code` (HMAC-SHA256 + base64url) the front-end can drop into a `<origin>/certificate?code=...` URL for public verification.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     application:
+ *                       type: object
+ *                     certificate:
+ *                       type: object
+ *                       properties:
+ *                         code:
+ *                           type: string
+ *                           description: HMAC-SHA256(base64url) signed verification code. Pass it to `GET /certificates/{code}` to verify.
  *       400:
  *         description: Application is not accepted / already completed
  *       403:

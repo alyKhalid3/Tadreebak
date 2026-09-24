@@ -21,6 +21,18 @@ import { ApplicationModel } from "../../DB/models/application.model";
 import { mergeApplicantsCount } from "../../utils/internshipCounts";
 import { SavedInternshipRepo } from "../../DB/repos/savedInternship.repo";
 
+// Cached views that need to flush on every internship mutation.
+// `Upstash` cacheFlushPrefix does LITERAL string-prefix match, so
+// `internships:list` does NOT cover `internships:stats:by-category`
+// — they need to be flushed independently. Centralized here so the
+// create / update / delete / close / reopen paths stay in lockstep.
+const flushInternshipAggregates = async () => {
+    await Promise.all([
+        cacheFlushPrefix('internships:list'),
+        cacheFlushPrefix('internships:stats'),
+    ])
+}
+
 export class InternService {
     private internRepo = new InternRepo
     private applicationRepo = new ApplicationRepo
@@ -165,10 +177,11 @@ export class InternService {
                 }
             })()
 
-            // A new internship shows up in every filtered list — flush them.
-            // The detail cache is keyed by id so it can't collide with the
-            // brand-new one, no need to DEL it.
-            await cacheFlushPrefix('internships:list')
+            // A new internship shows up in every filtered list AND in the
+            // category-stats aggregate — flush both. The detail cache is
+            // keyed by id so it can't collide with the brand-new one, no
+            // need to DEL it.
+            await flushInternshipAggregates()
 
             return successHandler({ res, message: "Internship created successfully", data: { internship }, status: 201 })
         } catch (error) {
@@ -199,12 +212,15 @@ export class InternService {
                 options: { returnDocument: "after" },
             })
 
-            // Invalidate the detail cache for this internship and every
+            // Invalidate the detail cache for this internship, every
             // list cache (a changed title/description/closed status affects
-            // any filtered listing).
+            // any filtered listing), and the category-stats aggregate
+            // (closed-state changes flip the `closed: { $ne: true }`
+            // filter and shift the counts).
             await Promise.all([
                 cacheDel(`internships:detail:${internId}`),
                 cacheFlushPrefix('internships:list'),
+                cacheFlushPrefix('internships:stats'),
             ])
 
             return successHandler({ res, message: "Internship updated successfully", data: { internship: updated } })
@@ -249,10 +265,11 @@ export class InternService {
                 session.endSession()
             }
 
-            // Detail + every filtered listing.
+            // Detail + every filtered listing + the stats aggregate.
             await Promise.all([
                 cacheDel(`internships:detail:${internId}`),
                 cacheFlushPrefix('internships:list'),
+                cacheFlushPrefix('internships:stats'),
             ])
 
             return successHandler({ res, message: "Internship deleted successfully" })
@@ -292,10 +309,13 @@ export class InternService {
             )
         }
 
-        // Closed status changes visibility in every listing.
+        // Closed status changes visibility in every listing AND in
+        // the category-stats aggregate (it's a `closed: { $ne: true }`
+        // filter — flipping `closed` shifts the counts).
         await Promise.all([
             cacheDel(`internships:detail:${internId}`),
             cacheFlushPrefix('internships:list'),
+            cacheFlushPrefix('internships:stats'),
         ])
 
         return updated
@@ -314,6 +334,52 @@ export class InternService {
         try {
             const updated = await this.changeClosedState(req.params.internId as string, res.locals.user, false)
             return successHandler({ res, message: "Internship reopened successfully", data: { internship: updated } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    /**
+     * Phase 13 / P3 #9 — category counters for the home page's
+     * "Browse by Category" section.
+     *
+     * Aggregates every still-open internship's `track[]` and
+     * returns a `{ category → count }` map. Open only by default
+     * (closed internships don't surface on the home page); pass
+     * `?includeClosed=true` to count the full catalogue.
+     *
+     * The aggregation is a single `$unwind + $group` so it scales
+     * with the number of internship rows, not applications.
+     * 60 s cache — these counts change only when an internship is
+     * posted / closed, both of which already flush
+     * `internships:list`.
+     */
+    statsByCategory = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { includeClosed } = req.query as { includeClosed?: string }
+
+            const cacheKey = `internships:stats:by-category:${includeClosed === 'true' ? 'all' : 'open'}`
+            const counts = await cacheWrap(cacheKey, 60, async () => {
+                const match: Record<string, any> = {}
+                if (includeClosed !== 'true') {
+                    match.closed = { $ne: true }
+                }
+                const rows = await InternShipModel.aggregate([
+                    { $match: match },
+                    { $unwind: '$track' },
+                    { $group: { _id: '$track', count: { $sum: 1 } } },
+                ])
+                // Normalize to `{ [category]: count }` shape.
+                const result: Record<string, number> = {}
+                for (const row of rows as { _id: string; count: number }[]) {
+                    if (row && typeof row._id === 'string') {
+                        result[row._id] = row.count
+                    }
+                }
+                return result
+            })
+
+            return successHandler({ res, message: 'ok', data: { counts } })
         } catch (error) {
             next(error)
         }

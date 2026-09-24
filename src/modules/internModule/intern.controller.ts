@@ -15,6 +15,7 @@ export const internRoutes = {
     save: '/:internId/save',
     unsave: '/:internId/save',
     getInternById: '/:internId',
+    statsByCategory: '/stats/by-category',
 }
 
 const internService = new InternService()
@@ -159,6 +160,51 @@ router.get(internRoutes.list, validation(InternValidation.listInternQuerySchema)
  *         description: Student role required
  */
 router.get(internRoutes.saved, auth(), AuthZMiddleware([UserRoleEnum.STUDENT]), validation(InternValidation.listSavedInternQuerySchema), internService.listSavedInternships)
+
+/**
+ * @swagger
+ * /internships/stats/by-category:
+ *   get:
+ *     summary: Aggregated count of open internships per `track` (Phase 13 / P3 #9)
+ *     description: |
+ *       Powers the home page's "Browse by Category" section.
+ *       Counts every open internship once per `track` it carries
+ *       (a single internship may contribute to multiple
+ *       categories). Public, no auth required.
+ *
+ *       Cached for 60 s; busted on create / close / reopen by
+ *       the existing `internships:list` flush (separate keys,
+ *       but the prefix flush covers both — `internships:stats`).
+ *     tags: [Internships]
+ *     parameters:
+ *       - in: query
+ *         name: includeClosed
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: ['true', 'false']
+ *         description: 'Pass `true` to count closed internships too. Default: open only.'
+ *     responses:
+ *       200:
+ *         description: Stats fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     counts:
+ *                       type: object
+ *                       additionalProperties: { type: integer }
+ *                       example: { frontend: 42, backend: 28, mobile: 19 }
+ *                 msg: { type: string }
+ */
+router.get(
+    internRoutes.statsByCategory,
+    internService.statsByCategory,
+)
 /**
  * @swagger
  * /internships/{internId}/save:

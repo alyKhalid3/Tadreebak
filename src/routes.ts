@@ -26,6 +26,16 @@ import { internEvaluationsRouter } from "./modules/intern/evaluations";
 import { pointsRouter } from "./modules/company/points";
 // Phase 12 (P2) — Save Companies (student-side bookmark).
 import { savedCompaniesRouter } from "./modules/savedCompanies";
+// Phase 14 (P3) — Contact form (public).
+import { contactRouter } from "./modules/contact";
+// Phase 15 (P3) — Newsletter subscribe (public).
+import { newsletterRouter } from "./modules/newsletter";
+// Phase 16 (P3) — Content reports (authenticated).
+import { reportsRouter } from "./modules/reports";
+// Phase 17 / P5 #11 — Public certificate verification. No auth — anyone
+// with a valid HMAC-signed code can verify. Mounted at /certificates
+// to match BACKEND_GAPS_EN §11 literally.
+import { certificatesRouter } from "./modules/certificates";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -71,6 +81,15 @@ baseRouter.use('/company/:companyId/points', pointsRouter)
 // /companies means the path `/companies/:id/save` doesn't conflict
 // with the existing /company router.
 baseRouter.use('/companies', savedCompaniesRouter)
+// Phase 14/15/16 (P3) — public site endpoints.
+baseRouter.use('/contact', contactRouter)
+baseRouter.use('/newsletter', newsletterRouter)
+// Phase 16 (P3) — content reports. Authenticated; mounted at /reports.
+baseRouter.use('/reports', reportsRouter)
+// Phase 17 / P5 #11 — public certificate verification. No auth; mounted
+// at /certificates so the spec's `/certificates/:code` URL is hit
+// verbatim (BACKEND_GAPS_EN §11).
+baseRouter.use('/certificates', certificatesRouter)
 // Phase 5: intern-side evaluations are per-company too.
 baseRouter.use('/intern/me/:companyId/evaluations', internEvaluationsRouter)
 /**

@@ -44,6 +44,11 @@ const userSchema = new mongoose.Schema<IUser>({
     provider: { type: String, enum: ProviderEnum, default: ProviderEnum.SYSTEM },
     bio: { type: String, maxlength: 500 },
     headline: { type: String, maxlength: 100 },
+    // Phase 17 / P5 #12 — daily streak check-in (student gamification).
+    // Defaults to 0 / null so legacy users stay valid without a
+    // migration; service handles the "first check-in" case.
+    streakCount: { type: Number, default: 0, min: 0 },
+    lastCheckInAt: { type: Date, default: null },
     // Skills are Mixed so each array element can be either a plain
     // string ("React") or an object with source/sourceRef/description.
     // Validation is enforced at the API boundary (user.validation),

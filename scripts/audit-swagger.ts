@@ -40,6 +40,10 @@ const files = [
     "modules/applicationModule/application.controller.ts",
     "modules/applicationModule/rating.controller.ts",
     "modules/savedCompanies/savedCompanies.controller.ts",
+    "modules/contact/contact.controller.ts",
+    "modules/newsletter/newsletter.controller.ts",
+    "modules/reports/reports.controller.ts",
+    "modules/certificates/certificates.controller.ts",
     "modules/notificationModule/notification.controller.ts",
     "modules/billingModule/billing.controller.ts",
 ]

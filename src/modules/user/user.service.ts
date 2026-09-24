@@ -6,7 +6,8 @@ import { Request, Response, NextFunction } from 'express'
 import { ApplicationError } from '../../utils/error'
 import { successHandler } from '../../utils/successHandler'
 import { toSafeUser } from '../../utils/safeUser';
-import { cacheDel, cacheFlushPrefix } from '../../cache/cache';
+import { cacheDel, cacheFlushPrefix, cacheWrap } from '../../cache/cache';
+import { applyCheckin } from '../../utils/streak';
 
 import { CompanyRepo } from '../../DB/repos/company.repo';
 import { NotFoundException } from '../../utils/error';
@@ -582,6 +583,101 @@ export class UserService {
             next(error)
         }
     }
+    /**
+     * Phase 17 / P5 #12 — daily streak check-in.
+     *
+     * Student-only, self-only. The path `:userId` must match the
+     * bearer token's subject (enforced at the controller). Pure
+     * date arithmetic lives in `src/utils/streak.ts` so it's
+     * testable without a DB.
+     *
+     * Cache: 60 s under `user:streak:{userId}`. Both endpoints
+     * read the same key, and the POST busts it after the update
+     * so the next GET sees the fresh streak.
+     */
+    streakCheckIn = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const userId = (req.params.userId as string) || (req.params.id as string)
+            const user = res.locals.user
+            if (user._id.toString() !== userId) {
+                throw new ApplicationError('You can only check in for yourself', 403)
+            }
+
+            const target = await this.userRepo.findById({ id: userId })
+            if (!target) {
+                throw new NotFoundException('User not found')
+            }
+
+            const next = applyCheckin(
+                {
+                    count: (target as any).streakCount ?? 0,
+                    last: (target as any).lastCheckInAt ?? null,
+                },
+                new Date(),
+            )
+
+            // Idempotency: if neither count nor last changed, we
+            // already have today's check-in — no DB write needed.
+            const changed =
+                next.count !== ((target as any).streakCount ?? 0) ||
+                (next.last?.getTime() ?? 0) !==
+                    (((target as any).lastCheckInAt as Date | null | undefined)?.getTime() ?? 0)
+
+            if (changed) {
+                await this.userRepo.update({
+                    filter: { _id: target._id },
+                    data: {
+                        streakCount: next.count,
+                        lastCheckInAt: next.last,
+                    },
+                })
+                await cacheDel(`user:streak:${userId}`)
+                // The profile cache includes derived fields but not
+                // streakCount / lastCheckInAt today — flush it too
+                // so a `GET /user/:id` after a check-in doesn't
+                // miss the new fields if they get projected later.
+                await cacheDel(`user:${userId}`)
+            }
+
+            return successHandler({
+                res,
+                message: 'Check-in recorded',
+                data: {
+                    streak: { count: next.count, last: next.last },
+                },
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    streakGet = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const userId = (req.params.userId as string) || (req.params.id as string)
+            const user = res.locals.user
+            if (user._id.toString() !== userId) {
+                throw new ApplicationError('You can only view your own streak', 403)
+            }
+
+            const data = await cacheWrap(`user:streak:${userId}`, 60, async () => {
+                const target = await this.userRepo.findById({ id: userId })
+                if (!target) {
+                    throw new NotFoundException('User not found')
+                }
+                return {
+                    streak: {
+                        count: (target as any).streakCount ?? 0,
+                        last: ((target as any).lastCheckInAt as Date | null | undefined) ?? null,
+                    },
+                }
+            })
+
+            return successHandler({ res, message: 'ok', data })
+        } catch (error) {
+            next(error)
+        }
+    }
+
     deleteAccount = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { userId } = req.params

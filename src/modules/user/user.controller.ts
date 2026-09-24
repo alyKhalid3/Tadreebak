@@ -22,6 +22,7 @@ export const userRoutes = {
     updateCourse: '/courses/:courseIndex',
     deleteCourse: '/courses/:courseIndex',
     myApplications: '/:userId/applications',
+    streakCheckIn: '/:userId/checkin',
     getProfile: '/:userId',
     update: '/:userId',
     delete: '/:userId',
@@ -693,6 +694,116 @@ router.delete(userRoutes.deleteCourse, auth(), userService.deleteCourse)
  *         description: You can only view your own applications
  */
 router.get(userRoutes.myApplications, auth(), validation(ApplicationValidation.listMyApplicationsQuerySchema), applicationService.listMine)
+
+/**
+ * @swagger
+ * /user/{userId}/checkin:
+ *   post:
+ *     summary: Daily streak check-in (student, self-only)
+ *     description: |
+ *       Records a streak check-in for the authenticated student.
+ *       Self-only — the `:userId` must match the bearer token's
+ *       subject. Calling twice in the same UTC day is a no-op
+ *       success; calling after a gap resets the counter to 1.
+ *
+ *       Auth: STUDENT role only. The 'streak' feature is part of
+ *       the student dashboard (P5 #12).
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Streak after this check-in (idempotent if same day)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     streak: { $ref: '#/components/schemas/StreakState' }
+ *                 msg: { type: string }
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       403:
+ *         description: Caller can only check in for themselves
+ *       404:
+ *         description: User not found
+ */
+router.post(
+    userRoutes.streakCheckIn,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.STUDENT]),
+    userService.streakCheckIn,
+)
+
+/**
+ * @swagger
+ * /user/{userId}/checkin:
+ *   get:
+ *     summary: Read the current streak state (student, self-only)
+ *     description: |
+ *       Returns `{ data: { streak: { count, last } } }` for the
+ *       authenticated student. Self-only.
+ *
+ *       Cached for 60 s under `user:streak:{userId}`; busted on
+ *       check-in.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Current streak state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     streak: { $ref: '#/components/schemas/StreakState' }
+ *                 msg: { type: string }
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       403:
+ *         description: Caller can only view their own streak
+ */
+router.get(
+    userRoutes.streakCheckIn,
+    auth(),
+    AuthZMiddleware([UserRoleEnum.STUDENT]),
+    userService.streakGet,
+)
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     StreakState:
+ *       type: object
+ *       properties:
+ *         count:
+ *           type: integer
+ *           minimum: 0
+ *           description: Number of consecutive check-in days. Resets to 1 on a gap of 2+ days.
+ *         last:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *           description: UTC timestamp of the most recent check-in. `null` if never checked in.
+ */
 
 /**
  * @swagger
