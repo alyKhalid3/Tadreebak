@@ -19,7 +19,7 @@ import { Types, isObjectIdOrHexString } from "mongoose"
 import { EvaluationRepo } from "../../../DB/repos/evaluation.repo"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
-import { assertOwnedCompany } from "../../../utils/companyAccess"
+import { assertStaffPermission } from "../../../utils/companyAccess"
 import {
     cacheDel,
     cacheFlushPrefix,
@@ -51,7 +51,7 @@ export class EvaluationsService {
             const companyId = req.params.companyId as string
             const internId = req.params.internId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             if (!isObjectIdOrHexString(internId)) {
                 throw new ApplicationError("Invalid intern id", 400)
@@ -151,7 +151,7 @@ export class EvaluationsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             const { internId, period, page, limit } = req.query as {
                 internId?: string
@@ -209,7 +209,7 @@ export class EvaluationsService {
             const companyId = req.params.companyId as string
             const evaluationId = req.params.evaluationId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             if (!isObjectIdOrHexString(evaluationId)) {
                 throw new ApplicationError("Invalid evaluation id", 400)
@@ -236,7 +236,7 @@ export class EvaluationsService {
             const companyId = req.params.companyId as string
             const evaluationId = req.params.evaluationId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             if (!isObjectIdOrHexString(evaluationId)) {
                 throw new ApplicationError("Invalid evaluation id", 400)
@@ -299,7 +299,7 @@ export class EvaluationsService {
             const companyId = req.params.companyId as string
             const evaluationId = req.params.evaluationId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             if (!isObjectIdOrHexString(evaluationId)) {
                 throw new ApplicationError("Invalid evaluation id", 400)
@@ -351,7 +351,7 @@ export class EvaluationsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             // 60s cache — the dashboard hits this on every page load.
             const cacheKey = `evaluations:dashboard:${companyId}`
@@ -378,7 +378,7 @@ export class EvaluationsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'evaluations.create')
 
             // Cache only briefly (30s) — alerts are time-sensitive.
             const cacheKey = `evaluations:alerts:${companyId}`

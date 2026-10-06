@@ -5,7 +5,7 @@ import { ProjectStatus } from "../../../DB/types/project.type"
 import { IAttachment } from "../../../DB/types/attachment.type"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
-import { assertOwnedCompany } from "../../../utils/companyAccess"
+import { assertStaffPermission } from "../../../utils/companyAccess"
 import { cacheDel, cacheFlushPrefix, cacheWrap } from "../../../cache/cache"
 import {
     destroySingleFile,
@@ -23,7 +23,7 @@ export class ProjectsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const { status, programId, page, limit } = req.query as {
                 status?: ProjectStatus
@@ -69,7 +69,7 @@ export class ProjectsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const data = req.body as {
                 name: string
@@ -163,7 +163,7 @@ export class ProjectsService {
             const companyId = req.params.companyId as string
             const projectId = req.params.projectId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const cacheKey = `projects:detail:${projectId}`
             const project = await cacheWrap(cacheKey, 60, async () => {
@@ -186,7 +186,7 @@ export class ProjectsService {
             const companyId = req.params.companyId as string
             const projectId = req.params.projectId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const existing = await projectRepo.findOne({ filter: { _id: projectId, companyId } })
             if (!existing) throw new NotFoundException("Project not found")
@@ -221,7 +221,7 @@ export class ProjectsService {
             const companyId = req.params.companyId as string
             const projectId = req.params.projectId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const existing = await projectRepo.findOne({ filter: { _id: projectId, companyId } })
             if (!existing) throw new NotFoundException("Project not found")
@@ -252,7 +252,7 @@ export class ProjectsService {
             const companyId = req.params.companyId as string
             const projectId = req.params.projectId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const { internIds } = req.body as { internIds: string[] }
             const project = await projectRepo.findOne({ filter: { _id: projectId, companyId } })
@@ -294,7 +294,7 @@ export class ProjectsService {
             const companyId = req.params.companyId as string
             const projectId = req.params.projectId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'projects.crud')
 
             const file = req.file as Express.Multer.File | undefined
             if (!file) {

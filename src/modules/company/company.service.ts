@@ -44,6 +44,13 @@ export class CompanyService {
             });
             const createdCompany = await this.companyRepo.create({ data: { ...data, createdBy: user._id, legalAttachment: { public_id, secure_url } } })
 
+            // Seed the system roles for this company: Owner (full
+            // perms) + Instructor (the Phase 18 staff set, expressed
+            // as explicit perms now). Built-in roles can't be deleted;
+            // the Owner role can't be edited (perms are implicit).
+            const { seedSystemRoles } = await import("../../utils/seedSystemRoles")
+            await seedSystemRoles(createdCompany._id)
+
             // Promote the creator to COMPANY_OWNER. Role is granted at creation
             // time (per product decision); they still can't post internships
             // until an admin approves the company.

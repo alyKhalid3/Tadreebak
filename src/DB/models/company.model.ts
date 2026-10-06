@@ -27,7 +27,12 @@ export const companySchema = new mongoose.Schema<ICompany>({
             secure_url: String
         }
     },
-    // HRs: { type: [Types.ObjectId], default: [], ref: 'User' },
+    // Phase 18B / Company staff — denormalized mirror of the
+    // staff list for fast "list my company's staff" queries.
+    // `User.staffMembership[]` is the canonical source of truth;
+    // a pre-save hook on User keeps this array in sync. Soft-
+    // revoked staff are KEPT here so the audit trail survives.
+    staffMembers: [{ type: Types.ObjectId, ref: 'User' }],
     bannedAt: { type: Date },
     deletedAt: { type: Date },
     legalAttachment: {

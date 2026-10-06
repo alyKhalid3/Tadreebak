@@ -1,6 +1,6 @@
 import EventEmitter from "node:events";
 import { sendEmail } from "./sendEmail";
-type UserEventType = 'send-email-activation-code' | 'send-email-password-reset-code' | 'send-email-new-email-code' | 'send-email-acceptance' | 'send-email-new-internship' | 'send-email-contact-form' | 'send-email-newsletter-confirmation'
+type UserEventType = 'send-email-activation-code' | 'send-email-password-reset-code' | 'send-email-new-email-code' | 'send-email-acceptance' | 'send-email-new-internship' | 'send-email-contact-form' | 'send-email-newsletter-confirmation' | 'send-email-instructor-invite' | 'send-email-instructor-confirm' | 'send-email-owner-staff-accepted-ping'
 export class UserEvents {
     constructor(private emitter: EventEmitter) { }
     subscribe = (event: UserEventType, cb: (payload: any) => void) => this.emitter.on(event, cb)
@@ -28,3 +28,6 @@ emailEmitter.subscribe('send-email-acceptance', handleEmail)
 emailEmitter.subscribe('send-email-new-internship', handleEmail)
 emailEmitter.subscribe('send-email-contact-form', handleEmail)
 emailEmitter.subscribe('send-email-newsletter-confirmation', handleEmail)
+emailEmitter.subscribe('send-email-instructor-invite', handleEmail)
+emailEmitter.subscribe('send-email-instructor-confirm', handleEmail)
+emailEmitter.subscribe('send-email-owner-staff-accepted-ping', handleEmail)

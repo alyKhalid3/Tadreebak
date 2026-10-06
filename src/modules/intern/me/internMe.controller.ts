@@ -254,19 +254,19 @@ internMeRouter.get(
  *                             secure_url: { type: string }
  *                     supervisor:
  *                       type: object
- *                       nullable: true
+ *                       description: |
+ *                         Phase 18: now an object with `owner` and
+ *                         `instructors[]` (was a flat user ref to
+ *                         the company owner only). Front-end picks
+ *                         the display per its UX.
  *                       properties:
- *                         _id: { type: string }
- *                         firstName: { type: string }
- *                         lastName: { type: string }
- *                         email: { type: string, format: email }
- *                         profilePicture:
+ *                         owner:
  *                           type: object
  *                           nullable: true
- *                           properties:
- *                             public_id: { type: string }
- *                             secure_url: { type: string }
- *                         phoneNumber: { type: string, nullable: true }
+ *                           description: 'The company owner (the staff-management owner). Populated with firstName / lastName / email / profilePicture / phoneNumber.'
+ *                         instructors:
+ *                           type: array
+ *                           description: 'Active instructor staff (excludes soft-revoked). Populated with firstName / lastName / email / profilePicture.'
  *                 msg: { type: string, example: 'Supervisor fetched successfully' }
  *       400: { description: Malformed companyId }
  *       401: { description: Unauthenticated }

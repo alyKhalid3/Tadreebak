@@ -45,4 +45,11 @@ export interface ICompany {
     linkedin?: string
     headline?: string
     foundedYear?: number
+
+    // Phase 18B / Company staff — denormalized mirror of the
+    // staff list for fast "list my company's staff" queries.
+    // `User.staffMembership[]` is the canonical source of truth;
+    // a pre-save hook on User keeps this array in sync.
+    // Soft-revoked staff are KEPT here so the audit trail survives.
+    staffMembers?: Types.ObjectId[]
 }

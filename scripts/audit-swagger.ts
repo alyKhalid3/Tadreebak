@@ -44,6 +44,9 @@ const files = [
     "modules/newsletter/newsletter.controller.ts",
     "modules/reports/reports.controller.ts",
     "modules/certificates/certificates.controller.ts",
+    "modules/company/instructors/instructors.controller.ts",
+    "modules/company/roles/roles.controller.ts",
+    "modules/permissions/permissions.controller.ts",
     "modules/notificationModule/notification.controller.ts",
     "modules/billingModule/billing.controller.ts",
 ]

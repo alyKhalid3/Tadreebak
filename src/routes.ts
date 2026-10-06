@@ -36,6 +36,14 @@ import { reportsRouter } from "./modules/reports";
 // with a valid HMAC-signed code can verify. Mounted at /certificates
 // to match BACKEND_GAPS_EN §11 literally.
 import { certificatesRouter } from "./modules/certificates";
+// Phase 18 / Company staff / Instructor — owner-side admin routes mounted
+// under `/company/:companyId/instructors`. The public-internal
+// `instructorAuthRouter` lives at `/instructor-auth/accept-invite` so
+// its URL shape signals "no company gate".
+import { instructorsRouter, instructorAuthRouter } from "./modules/company/instructors";
+// Phase 18B / Roles + permissions registry endpoints.
+import { rolesRouter } from "./modules/company/roles";
+import { permissionsRouter } from "./modules/permissions";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -90,6 +98,17 @@ baseRouter.use('/reports', reportsRouter)
 // at /certificates so the spec's `/certificates/:code` URL is hit
 // verbatim (BACKEND_GAPS_EN §11).
 baseRouter.use('/certificates', certificatesRouter)
+// Phase 18 / Company staff / Instructor admin endpoints. Owner-only;
+// `assertOwnedCompany` is the real gate inside the service.
+baseRouter.use('/company/:companyId/instructors', instructorsRouter)
+// Phase 18B / Roles CRUD. Owner-only; assertOwnedCompany inside the service.
+baseRouter.use('/company/:companyId/roles', rolesRouter)
+// Public read-only — exposes the permission registry so the front-end
+// can render a permission picker without hardcoding the keys.
+baseRouter.use('/permissions', permissionsRouter)
+// Public-internal claim-account flow for instructors — no auth, the
+// body carries the raw setup token from the invite email.
+baseRouter.use('/instructor-auth', instructorAuthRouter)
 // Phase 5: intern-side evaluations are per-company too.
 baseRouter.use('/intern/me/:companyId/evaluations', internEvaluationsRouter)
 /**

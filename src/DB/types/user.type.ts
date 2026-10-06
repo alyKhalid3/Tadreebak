@@ -6,6 +6,12 @@ export enum UserRoleEnum {
     USER = 'user',
     STUDENT = 'student',
     COMPANY_OWNER = 'company_owner',
+    // Phase 18 / Instructors: a staff member invited by a company owner
+    // to manage the student-side of the company dashboard (tasks,
+    // attendance, evaluations). Distinct from `COMPANY_OWNER` so the
+    // owner-only endpoints (billing, profile edit, inviting other
+    // instructors, deleting the company) can stay strict.
+    COMPANY_INSTRUCTOR = 'company_instructor',
     // `intern` is set when an accepted application promotes the user from
     // `student` to an active intern at a company. One-company-at-a-time —
     // an intern can only be enrolled at one company; a second accepted
@@ -184,6 +190,37 @@ export interface IUser {
     // when the program ends. `internshipEndDate = null` means "still active".
     internshipStartDate?: Date
     internshipEndDate?: Date | null
+
+    // ---- Company staff (Phase 18B) ----
+    // A company staff member is a normal User who signs in with
+    // their own credentials (email + password) but acts as
+    // staff at one or more companies. Each membership entry carries
+    // the company + the role that defines what they can do at
+    // that company.
+    //
+    // Phase 18 used scalar `companyAffiliation` + `instructorStatus` +
+    // `instructorRemovedAt`. Phase 18B unified them into
+    // `staffMembership[]` so the same User can be staff at multiple
+    // companies with different roles per company (multi-company
+    // still rejected at invite time for v1, but the array is
+    // forward-looking).
+    //
+    // The mirror copy lives on `Company.staffMembers[]` (was
+    // `Company.instructors[]` in Phase 18) for fast "list my
+    // company's staff" queries. A pre-save hook on User keeps the
+    // mirror in sync.
+    staffMembership?: {
+        _id?: Types.ObjectId
+        companyId: Types.ObjectId
+        // Reference to a CompanyRole. The role carries the
+        // permission set; the staff's effective permissions =
+        // role.permissions (with an optional override array
+        // future-proofed below).
+        roleId: Types.ObjectId
+        status: 'active' | 'removed'
+        joinedAt: Date
+        removedAt: Date | null
+    }[]
 }
 
 // One per (user, company) pair. A user can have many of these — one

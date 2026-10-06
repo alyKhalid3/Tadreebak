@@ -24,6 +24,7 @@ import { TaskModel } from "../../../DB/models/task.model"
 import { AttendanceRepo } from "../../../DB/repos/attendance.repo"
 import { ProgramStatus } from "../../../DB/types/program.type"
 import { ProjectStatus } from "../../../DB/types/project.type"
+import { UserRoleEnum } from "../../../DB/types/user.type"
 import { TaskStatus } from "../../../DB/types/task.type"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
@@ -225,6 +226,12 @@ export class InternMeService {
     }
 
     // ----- Per-company: supervisor -----
+    // Phase 18B: returns `{ owner, staffMembers[] }` where each
+    // staff member carries their role name. The `owner` slot is
+    // the company creator. The `staffMembers` slot is the active
+    // staff roster (excludes soft-revoked) — filter on the live
+    // `staffMembership.status === 'active'` rather than the mirror
+    // copy so a mid-flush revoke doesn't surface a removed person.
     supervisor = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = res.locals.user
@@ -235,16 +242,73 @@ export class InternMeService {
                 )
             }
             const company: any = await companyModel
-                .findOne({ _id: companyId }, { name: 1, logo: 1, createdBy: 1 })
+                .findOne({ _id: companyId }, { name: 1, logo: 1, createdBy: 1, staffMembers: 1 })
                 .populate("createdBy", "firstName lastName email profilePicture phoneNumber")
                 .lean()
             if (!company) throw new NotFoundException("Company not found")
+
+            // Active-only: soft-revoked staff should not surface
+            // as supervisors. We filter on the live User fields
+            // (staffMembership.status === 'active') rather than the
+            // mirror copy so a soft-revoke that's mid-flush can't
+            // surface a removed person.
+            const staffIds: Types.ObjectId[] = (company.staffMembers ?? []).map(
+                (id: Types.ObjectId) => id,
+            )
+            const activeStaff = staffIds.length === 0
+                ? []
+                : await UserModel.find({
+                      _id: { $in: staffIds },
+                      role: UserRoleEnum.COMPANY_INSTRUCTOR,
+                      'staffMembership': {
+                          $elemMatch: {
+                              companyId: new mongoose.Types.ObjectId(companyId),
+                              status: 'active',
+                          },
+                      },
+                  })
+                    .select('firstName lastName email profilePicture staffMembership')
+                    .lean()
+
+            // Resolve role names so the front-end can render
+            // "Layla (Instructor)" without a follow-up request.
+            const roleIds = Array.from(new Set(
+                activeStaff
+                    .flatMap((u) => u.staffMembership ?? [])
+                    .map((m: any) => m.roleId?.toString())
+                    .filter(Boolean) as string[],
+            ))
+            const roles = roleIds.length === 0 ? [] : await (await import("../../../DB/models/companyRole.model")).CompanyRoleModel
+                .find({ _id: { $in: roleIds } })
+                .select('name')
+                .lean()
+            const roleMap = new Map(roles.map((r: any) => [r._id.toString(), r.name]))
+
+            const staffMembers = activeStaff.map((u) => {
+                const m = (u.staffMembership ?? []).find(
+                    (e: any) => e.companyId.toString() === companyId,
+                )
+                return {
+                    _id: u._id,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    email: u.email,
+                    profilePicture: u.profilePicture,
+                    role: m?.roleId
+                        ? { _id: m.roleId, name: roleMap.get(m.roleId.toString()) ?? null }
+                        : null,
+                }
+            })
+
             return successHandler({
                 res,
                 message: "Supervisor fetched successfully",
                 data: {
                     company: { _id: company._id, name: company.name, logo: company.logo },
-                    supervisor: company.createdBy ?? null,
+                    supervisor: {
+                        owner: company.createdBy ?? null,
+                        staffMembers,
+                    },
                 },
             })
         } catch (error) {

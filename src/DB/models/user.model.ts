@@ -120,6 +120,21 @@ const userSchema = new mongoose.Schema<IUser>({
     totalPoints: { type: Number, default: 0 },
     internshipStartDate: { type: Date },
     internshipEndDate: { type: Date, default: null },
+
+    // ---- Phase 18B / Company staff ----
+    // See IUser docs for the full design. The array shape means
+    // a User can be staff at multiple companies with different
+    // roles per company. For v1 we enforce "one company at a
+    // time" at the service layer (a re-invite of an already-
+    // active staff member is rejected).
+    staffMembership: [{
+        _id: { type: Schema.Types.ObjectId, auto: true },
+        companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+        roleId: { type: Schema.Types.ObjectId, ref: 'CompanyRole', required: true },
+        status: { type: String, enum: ['active', 'removed'], default: 'active' },
+        joinedAt: { type: Date, required: true, default: () => new Date() },
+        removedAt: { type: Date, default: null },
+    }],
 }, { timestamps: true });
 
 // Indexes for intern-dashboard queries. The list interns endpoint
@@ -129,6 +144,13 @@ userSchema.index({ 'enrollments.companyId': 1, 'enrollments.status': 1 })
 userSchema.index({ 'enrollments.totalPoints': -1 })
 // Legacy indexes (kept for the migration window)
 userSchema.index({ enrollmentCompanyId: 1, role: 1 })
+// Phase 18B / Staff lookup: list "active staff at this company".
+// The compound indexes rows where the user has a staff membership;
+// without a `staffMembership` element, the row is not indexed here.
+userSchema.index(
+    { 'staffMembership.companyId': 1, 'staffMembership.status': 1 },
+    { sparse: true },
+)
 
 userSchema.pre('save', async function (this: HydratedDocument<IUser> & { firstCreation: boolean, plainTextOtp?: string }) {
     this.firstCreation = this.isNew

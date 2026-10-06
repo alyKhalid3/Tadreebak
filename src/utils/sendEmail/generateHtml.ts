@@ -361,3 +361,145 @@ export const internshipNotificationTemplate = ({ studentName, internshipTitle, u
 // Re-export the helpers so callers that import the escape utilities from
 // this module still work if they were doing so before the audit.
 export { escapeHtml, escapeList, escapeUrl };
+
+// Phase 18B / First email in the two-step flow. The recipient
+// clicks this to confirm they're the person being invited; the
+// system then sends the second email (the setup link). This
+// is the security model from `docs/EMAIL_INVITE_SECURITY.md`:
+// an attacker with access to the recipient's email still has
+// to see BOTH emails to act.
+export const instructorConfirmTemplate = ({
+    name,
+    companyName,
+    inviterName,
+    roleName,
+    confirmUrl,
+    subject,
+}: {
+    name: string
+    companyName: string
+    inviterName: string
+    roleName: string
+    confirmUrl: string
+    subject: string
+}) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7fa; }
+    .email-container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+    .email-header { background: linear-gradient(90deg, #2563eb, #1e40af); color: #ffffff; text-align: center; padding: 22px; }
+    .email-header h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
+    .email-body { padding: 25px; color: #1f2937; line-height: 1.6; }
+    .email-body h2 { margin-top: 0; color: #1e40af; }
+    .cta { display:inline-block; background:#1e40af; color:#fff !important; padding:12px 22px; border-radius:8px; text-decoration:none; font-weight:600; margin:18px 0; }
+    .meta { background:#eff6ff; padding:14px; border-radius:8px; margin:14px 0; color:#1e3a8a; }
+    .expiry-note { font-size: 13px; color: #6b7280; }
+    .email-footer { text-align: center; padding: 15px; background-color: #f4f7fa; font-size: 13px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header"><h1>Tadreebak</h1></div>
+    <div class="email-body">
+      <h2>Hello ${escapeHtml(name)},</h2>
+      <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(companyName)}</strong> on Tadreebak as a <strong>${escapeHtml(roleName)}</strong>.</p>
+      <div class="meta">
+        Confirming takes one click. After you confirm, we'll send you a second email with the link to set your password.
+      </div>
+      <p>To get started, confirm your invitation:</p>
+      <p><a class="cta" href="${escapeUrl(confirmUrl)}">Confirm invitation</a></p>
+      <p class="expiry-note">This confirm link expires in <strong>7 days</strong>. If you don't confirm in time, ask ${escapeHtml(inviterName)} to resend the invite.</p>
+      <p>If you weren't expecting this email, you can safely ignore it.</p>
+      <p>Best regards,<br>Tadreebak Team</p>
+    </div>
+    <div class="email-footer">
+      <p>&copy; 2026 Tadreebak. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`
+
+// Phase 18B / Instructor invite template (setup-email step).
+//
+// Sent to the invited staff member's email after they click the
+// "Confirm" link. Contains:
+//   - a short note (when provided)
+//   - the company name they're being invited to
+//   - a CTA link that drops them on the password-setup page with
+//     the setup-token as a query param.
+//
+// The setup-token is the one-time password-setup credential — the
+// staff clicks the CTA, sets a real password, and lands on the
+// instructor dashboard. After acceptance the token is nullified on
+// the row so it can't be reused.
+export const instructorInviteTemplate = ({
+    name,
+    companyName,
+    inviterName,
+    note,
+    setupUrl,
+    subject,
+}: {
+    name: string
+    companyName: string
+    inviterName: string
+    note?: string
+    setupUrl: string
+    subject: string
+}) => {
+    const trimmedNote = note?.trim()
+    const noteBlock = trimmedNote
+        ? `
+      <div class="note-block">
+        <p class="note-label">A note from ${escapeHtml(inviterName)}:</p>
+        <p class="note-text">${escapeHtml(trimmedNote).replace(/\n/g, "<br />")}</p>
+      </div>`
+        : ""
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7fa; }
+    .email-container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+    .email-header { background: linear-gradient(90deg, #2563eb, #1e40af); color: #ffffff; text-align: center; padding: 22px; }
+    .email-header h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
+    .email-body { padding: 25px; color: #1f2937; line-height: 1.6; }
+    .email-body h2 { margin-top: 0; color: #1e40af; }
+    .cta { display:inline-block; background:#1e40af; color:#fff !important; padding:12px 22px; border-radius:8px; text-decoration:none; font-weight:600; margin:18px 0; }
+    .meta { background:#eff6ff; padding:14px; border-radius:8px; margin:14px 0; color:#1e3a8a; }
+    .note-block { background:#f0f9ff; border-left:4px solid #2563eb; border-radius:6px; padding:14px 18px; margin:18px 0; }
+    .note-label { margin: 0 0 6px 0; font-size: 13px; color: #1e40af; font-weight: bold; }
+    .note-text { margin: 0; color: #1f2937; }
+    .expiry-note { font-size: 13px; color: #6b7280; }
+    .email-footer { text-align: center; padding: 15px; background-color: #f4f7fa; font-size: 13px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header"><h1>Tadreebak</h1></div>
+    <div class="email-body">
+      <h2>Hello ${escapeHtml(name)},</h2>
+      <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(companyName)}</strong> as an instructor on Tadreebak.</p>
+      <div class="meta">
+        As an instructor, you'll be able to manage students at ${escapeHtml(companyName)} — create tasks, mark attendance, share evaluations, and review applications. You won't have access to billing or company profile settings.
+      </div>
+      ${noteBlock}
+      <p>To get started, set your password and sign in:</p>
+      <p><a class="cta" href="${escapeUrl(setupUrl)}">Set your password</a></p>
+      <p class="expiry-note">This invite expires in <strong>7 days</strong>. If you don't accept it in time, ask ${escapeHtml(inviterName)} to resend.</p>
+      <p>If you weren't expecting this email, you can safely ignore it.</p>
+      <p>Best regards,<br>Tadreebak Team</p>
+    </div>
+    <div class="email-footer">
+      <p>&copy; 2026 Tadreebak. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`
+};

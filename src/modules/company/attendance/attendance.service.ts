@@ -19,7 +19,7 @@ import { AttendanceRepo } from "../../../DB/repos/attendance.repo"
 import { AttendanceScheduleRepo } from "../../../DB/repos/attendanceSchedule.repo"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
-import { assertOwnedCompany } from "../../../utils/companyAccess"
+import { assertStaffPermission } from "../../../utils/companyAccess"
 import { cacheDel, cacheFlushPrefix, cacheWrap } from "../../../cache/cache"
 import { UserModel } from "../../../DB/models/user.model"
 import { companyModel } from "../../../DB/models/company.model"
@@ -79,7 +79,7 @@ export class AttendanceService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'attendance.mark')
 
             const {
                 internId,
@@ -161,7 +161,7 @@ export class AttendanceService {
             const companyId = req.params.companyId as string
             const internId = req.params.internId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'attendance.mark')
 
             if (!isObjectIdOrHexString(internId)) {
                 throw new ApplicationError("Invalid intern id", 400)
@@ -265,7 +265,7 @@ export class AttendanceService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'attendance.mark')
 
             const { rows } = req.body as {
                 rows: {
@@ -425,7 +425,7 @@ export class AttendanceService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'attendance.mark')
 
             const body = req.body as {
                 programId?: string
@@ -493,7 +493,7 @@ export class AttendanceService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'attendance.mark')
 
             const programId = (req.query as { programId?: string }).programId
             if (programId) {

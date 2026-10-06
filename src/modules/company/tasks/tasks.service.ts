@@ -27,7 +27,7 @@ import { TaskRepo } from "../../../DB/repos/task.repo"
 import { ITask, TaskStatus, ITaskAttachment, TaskPriority } from "../../../DB/types/task.type"
 import { ApplicationError, NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
-import { assertOwnedCompany } from "../../../utils/companyAccess"
+import { assertStaffPermission } from "../../../utils/companyAccess"
 import {
     cacheDel,
     cacheFlushPrefix,
@@ -77,7 +77,7 @@ export class TasksService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             const {
                 internId,
@@ -208,7 +208,7 @@ export class TasksService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             const {
                 projectId,
@@ -399,7 +399,7 @@ export class TasksService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             // The middleware already discriminated the union; here
             // we narrow the body to its 4 possible shapes.
@@ -607,7 +607,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const groupId = req.params.groupId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(groupId)) {
                 throw new ApplicationError("Invalid group id", 400)
@@ -653,7 +653,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const groupId = req.params.groupId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(groupId)) {
                 throw new ApplicationError("Invalid group id", 400)
@@ -706,7 +706,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -733,7 +733,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -783,7 +783,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -819,7 +819,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -915,7 +915,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -952,7 +952,7 @@ export class TasksService {
             const companyId = req.params.companyId as string
             const taskId = req.params.taskId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)
@@ -1030,7 +1030,7 @@ export class TasksService {
             const taskId = req.params.taskId as string
             const attachmentId = req.params.attachmentId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'tasks.create')
 
             if (!isObjectIdOrHexString(taskId)) {
                 throw new ApplicationError("Invalid task id", 400)

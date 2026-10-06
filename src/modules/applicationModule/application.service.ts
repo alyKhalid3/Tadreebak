@@ -9,7 +9,7 @@ import { IInternShip } from "../../DB/types/internship.type";
 import { IAnswer, IQuestion, QuestionType } from "../../DB/types/question.type";
 import { ApplicationError, NotFoundException } from "../../utils/error";
 import { successHandler } from "../../utils/successHandler";
-import { assertOwnedCompany } from "../../utils/companyAccess";
+import { assertStaffPermission } from "../../utils/companyAccess";
 import { uploadSingleFile, destroySingleFile } from "../../utils/multer/cloudinary.service";
 import { notificationEmitter } from "../../utils/notifications/notificationEvents";
 import { NotificationType } from "../../DB/types/notification.type";
@@ -49,10 +49,13 @@ export class ApplicationService {
         return internship
     }
 
-    // Verify the company is owned by the user, then fetch the internship and
-    // confirm it belongs to that company. Used by the company review endpoints.
+    // Verify the company is owned by (or staffed at by) the user,
+    // then fetch the internship and confirm it belongs to that
+    // company. Used by the company review endpoints. Phase 18B:
+    // `assertStaffPermission` with the applicants.review perm so
+    // the per-role set is the real gate.
     private async getOwnedInternship(internId: string, companyId: string, userId: string): Promise<void> {
-        await assertOwnedCompany(companyId, userId)
+        await assertStaffPermission(companyId, userId, 'applicants.review')
         if (!isObjectIdOrHexString(internId)) {
             throw new ApplicationError("Invalid internship id", 400)
         }
@@ -486,7 +489,7 @@ export class ApplicationService {
             const { applicationId } = req.params
             const user = res.locals.user
 
-            const company = await assertOwnedCompany(companyId, user._id.toString())
+            const { company } = await assertStaffPermission(companyId, user._id.toString(), 'applicants.send_acceptance_email')
 
             if (!isObjectIdOrHexString(applicationId)) {
                 throw new ApplicationError("Invalid application id", 400)

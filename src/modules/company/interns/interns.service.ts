@@ -5,7 +5,7 @@ import { ProgramModel } from "../../../DB/models/program.model"
 import { ProjectModel } from "../../../DB/models/project.model"
 import { NotFoundException } from "../../../utils/error"
 import { successHandler } from "../../../utils/successHandler"
-import { assertOwnedCompany } from "../../../utils/companyAccess"
+import { assertStaffPermission } from "../../../utils/companyAccess"
 import { cacheWrap } from "../../../cache/cache"
 import { EnrollmentStatus } from "../../../DB/types/user.type"
 
@@ -22,7 +22,7 @@ export class InternsService {
         try {
             const companyId = req.params.companyId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'interns.read')
 
             const {
                 programId,
@@ -125,7 +125,7 @@ export class InternsService {
             const companyId = req.params.companyId as string
             const internId = req.params.internId as string
             const user = res.locals.user
-            await assertOwnedCompany(companyId, user._id.toString())
+            await assertStaffPermission(companyId, user._id.toString(), 'interns.read')
 
             // The intern must have an enrollment at this company.
             // Same "scoped lookup" as the list endpoint.

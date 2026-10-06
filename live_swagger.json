@@ -1374,6 +1374,128 @@
           }
         }
       },
+      "InviteInstructor": {
+        "type": "object",
+        "required": [
+          "firstName",
+          "lastName",
+          "email"
+        ],
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional short note shown in the invite email."
+          }
+        }
+      },
+      "Instructor": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "company_instructor"
+            ]
+          },
+          "companyAffiliation": {
+            "type": "string"
+          },
+          "instructorStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "removed"
+            ]
+          },
+          "instructorRemovedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AcceptInstructorInvite": {
+        "type": "object",
+        "required": [
+          "inviteId",
+          "token",
+          "newPassword"
+        ],
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "description": "24-char ObjectId from the invite URL."
+          },
+          "token": {
+            "type": "string",
+            "description": "Raw setup token from the email body."
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          }
+        }
+      },
+      "ConfirmInstructorInvite": {
+        "type": "object",
+        "required": [
+          "inviteId",
+          "token"
+        ],
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "description": "24-char ObjectId from the confirm URL."
+          },
+          "token": {
+            "type": "string",
+            "description": "Raw confirm token from the first email body."
+          }
+        }
+      },
       "PointsRule": {
         "type": "object",
         "properties": {
@@ -1940,6 +2062,91 @@
           },
           "pagination": {
             "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "CreateRole": {
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "permissions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "example": "tasks.create"
+            }
+          }
+        }
+      },
+      "UpdateRole": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "permissions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CompanyRole": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "isOwnerRole": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -5676,6 +5883,324 @@
         }
       }
     },
+    "/company/{companyId}/instructors": {
+      "post": {
+        "summary": "Invite an instructor by email (owner only)",
+        "description": "Sends a one-time setup link to the given address. If a user\nwith that email already exists, they're promoted to\nCOMPANY_INSTRUCTOR (with safety checks — active STUDENTs\nmust withdraw first). Otherwise a placeholder user is\ncreated and they set their password via the link.\n",
+        "tags": [
+          "Instructors"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteInstructor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Invite sent"
+          },
+          "400": {
+            "description": "Self-invite / role conflict"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Company not found"
+          },
+          "409": {
+            "description": "Already an instructor at this company"
+          }
+        }
+      },
+      "get": {
+        "summary": "List instructors for the company (owner only)",
+        "tags": [
+          "Instructors"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "active",
+                "removed"
+              ],
+              "default": "active"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructors listed"
+          },
+          "403": {
+            "description": "Not the company owner"
+          }
+        }
+      }
+    },
+    "/company/{companyId}/instructors/{userId}": {
+      "patch": {
+        "summary": "Rename an instructor (owner only)",
+        "tags": [
+          "Instructors"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "firstName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 50
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Instructor not found at this company"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Soft-revoke an instructor (owner only)",
+        "description": "Sets `instructorStatus: 'removed'` on the user and pulls\nthem from `Company.instructors[]`. Their historical actions\nkeep their name attached (we don't rewrite audit logs).\n",
+        "tags": [
+          "Instructors"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Instructor not found at this company"
+          }
+        }
+      }
+    },
+    "/company/{companyId}/instructors/{userId}/resend-invite": {
+      "post": {
+        "summary": "Resend the setup email to an instructor (owner only)",
+        "tags": [
+          "Instructors"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invite resent"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Instructor not found at this company"
+          }
+        }
+      }
+    },
+    "/instructor-auth/accept-invite": {
+      "post": {
+        "summary": "Accept an instructor invite and set a password (public)",
+        "description": "The instructor clicks the link in the invite email, lands\non `/instructor-setup?token=...&invite=...`, sets a password,\nand the server flips the invite row to `accepted`. The\ntoken in the email is one-time — it's nullified on the row\nafter a successful accept.\n",
+        "tags": [
+          "Instructors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInstructorInvite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Instructor account activated"
+          },
+          "400": {
+            "description": "Invalid invite id / token / expired / password"
+          },
+          "404": {
+            "description": "Invite / instructor not found"
+          }
+        }
+      }
+    },
+    "/instructor-auth/confirm-invite": {
+      "post": {
+        "summary": "Confirm a staff invitation and trigger the setup email",
+        "description": "Public, no auth. The recipient clicks the link in the\n**first** invite email; this endpoint validates the\nconfirm token, marks the invite as confirmed, mints a\nfresh setup token, and emails the recipient the\npassword-setup link. This is the first step of the\ntwo-step accept flow (security model in\n`docs/EMAIL_INVITE_SECURITY.md`).\n",
+        "tags": [
+          "Instructors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmInstructorInvite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invitation confirmed; setup email sent"
+          },
+          "400": {
+            "description": "Invalid / expired / already-used token"
+          },
+          "404": {
+            "description": "Invite not found"
+          }
+        }
+      }
+    },
     "/company/{companyId}/interns": {
       "get": {
         "summary": "List active and alumni interns of a company",
@@ -7403,6 +7928,191 @@
         }
       }
     },
+    "/company/{companyId}/roles": {
+      "get": {
+        "summary": "List roles defined at this company (owner only)",
+        "tags": [
+          "Roles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeSystem",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Roles listed"
+          },
+          "403": {
+            "description": "Not the company owner"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a custom role (owner only)",
+        "tags": [
+          "Roles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRole"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Role created"
+          },
+          "400": {
+            "description": "Reserved name / unknown permission"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "409": {
+            "description": "A role with this name already exists"
+          }
+        }
+      }
+    },
+    "/company/{companyId}/roles/{roleId}": {
+      "patch": {
+        "summary": "Update a role's name / description / permissions (owner only)",
+        "tags": [
+          "Roles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "roleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRole"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Role updated"
+          },
+          "400": {
+            "description": "Owner role / built-in rename forbidden"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Role not found at this company"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a custom role (owner only)",
+        "description": "Refuses with 409 if any staff member is currently using\nthe role. Reassign them to a different role first.\n",
+        "tags": [
+          "Roles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "roleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Role deleted"
+          },
+          "400": {
+            "description": "Built-in role cannot be deleted"
+          },
+          "403": {
+            "description": "Not the company owner"
+          },
+          "404": {
+            "description": "Role not found at this company"
+          },
+          "409": {
+            "description": "Role is in use"
+          }
+        }
+      }
+    },
     "/company/{companyId}/tasks": {
       "get": {
         "summary": "List tasks (kanban view) for a company",
@@ -8735,36 +9445,16 @@
                         },
                         "supervisor": {
                           "type": "object",
-                          "nullable": true,
+                          "description": "Phase 18: now an object with `owner` and\n`instructors[]` (was a flat user ref to\nthe company owner only). Front-end picks\nthe display per its UX.\n",
                           "properties": {
-                            "_id": {
-                              "type": "string"
-                            },
-                            "firstName": {
-                              "type": "string"
-                            },
-                            "lastName": {
-                              "type": "string"
-                            },
-                            "email": {
-                              "type": "string",
-                              "format": "email"
-                            },
-                            "profilePicture": {
+                            "owner": {
                               "type": "object",
                               "nullable": true,
-                              "properties": {
-                                "public_id": {
-                                  "type": "string"
-                                },
-                                "secure_url": {
-                                  "type": "string"
-                                }
-                              }
+                              "description": "The company owner (the staff-management owner). Populated with firstName / lastName / email / profilePicture / phoneNumber."
                             },
-                            "phoneNumber": {
-                              "type": "string",
-                              "nullable": true
+                            "instructors": {
+                              "type": "array",
+                              "description": "Active instructor staff (excludes soft-revoked). Populated with firstName / lastName / email / profilePicture."
                             }
                           }
                         }
@@ -10650,6 +11340,57 @@
           },
           "404": {
             "description": "Notification not found"
+          }
+        }
+      }
+    },
+    "/permissions": {
+      "get": {
+        "summary": "List every permission key the backend knows about",
+        "description": "Public, no auth required. Returns the registry of permission\nstrings the backend can gate on, grouped by domain (tasks,\nattendance, evaluations, applicants, interns, projects,\nroles, staff). The front-end uses this to render the\npermission picker on the role-edit screen — no need to\nhardcode the keys client-side.\n\nThe list is built from `src/utils/permissions.ts` at\nserver start; adding a new permission requires a code\nchange (a one-line addition + a route gate).\n",
+        "tags": [
+          "Permissions"
+        ],
+        "responses": {
+          "200": {
+            "description": "Permission list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "example": "tasks.create"
+                              },
+                              "label": {
+                                "type": "string",
+                                "example": "Create tasks"
+                              },
+                              "group": {
+                                "type": "string",
+                                "example": "Tasks"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
