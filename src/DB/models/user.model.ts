@@ -1,6 +1,6 @@
 
 import mongoose, { HydratedDocument, Schema } from "mongoose";
-import { IUser, ProviderEnum, UserRoleEnum, type fileAttributtes, IEducation, IExperience, IEnrollment } from "../types/user.type";
+import { IUser, ProviderEnum, UserRoleEnum, UserPendingRoleEnum, type fileAttributtes, IEducation, IExperience, IEnrollment } from "../types/user.type";
 import { template } from "../../utils/sendEmail/generateHtml";
 import { emailEmitter } from "../../utils/sendEmail/emailEvents";
 import { createHash } from "../../utils/hash";
@@ -12,6 +12,16 @@ const userSchema = new mongoose.Schema<IUser>({
     email: { type: String, required: true, unique: true },
     password: { type: String },
     role: { type: String, enum: UserRoleEnum, default: UserRoleEnum.STUDENT },
+    // Phase 19 / Signup intent. Optional, defaults to STUDENT so
+    // legacy signups (no body field) stay valid without a
+    // migration. The front-end reads this to render the right
+    // onboarding flow after signup. NO permission semantics —
+    // every access check uses `role`, not `pendingRole`.
+    pendingRole: {
+        type: String,
+        enum: UserPendingRoleEnum,
+        default: UserPendingRoleEnum.STUDENT,
+    },
     newEmail: { type: String, unique: true, sparse: true },
     emailOtp: {
         otp: { type: String },

@@ -27,7 +27,7 @@ export class AuthService {
     private userRepo: UserRepo = new UserRepo();
     signup = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { firstName, lastName, email, password, phone, education }: signupDTO = req.body
+            const { firstName, lastName, email, password, phone, education, pendingRole }: signupDTO & { pendingRole?: 'student' | 'company' } = req.body
             const isEmailExist = await this.userRepo.findByEmail({ email: req.body.email })
             if (isEmailExist) {
                 throw new EmailIsExistException()
@@ -47,9 +47,19 @@ export class AuthService {
                     otp,
                     expiresAt: new Date(Date.now() + 5 * 60 * 1000)
                 }
+                // Phase 19 / pendingRole is stored below if present.
+                // It is a pure intent signal — `User.role` stays
+                // STUDENT (the schema default) and only flips to
+                // COMPANY_OWNER when the user actually creates a
+                // company. Frontend reads it to pick the right
+                // onboarding flow. NO permission semantics — see
+                // UserPendingRoleEnum.
             }
             if (education) {
                 createData.education = education as any
+            }
+            if (pendingRole) {
+                createData.pendingRole = pendingRole
             }
             const user = await this.userRepo.create({ data: createData })
             const safeUser = toSafeUser(user.toObject())

@@ -18,6 +18,22 @@ export enum UserRoleEnum {
     // application is rejected (enforced in application.service.accept).
     INTERN = 'intern',
 }
+
+// Phase 19 / Signup intent. The new user picks "I came here to
+// apply to internships" (student) or "I came here to hire
+// interns" (company) at signup time. The backend stores the pick
+// here as a pure intent signal — `User.role` is still `STUDENT`
+// at signup and only flips to `COMPANY_OWNER` when the user
+// actually creates a company (in `createCompany` service).
+//
+// This field has ZERO permission semantics. It is read only by
+// the front-end to decide which onboarding flow to render. Any
+// access check uses `User.role` or `assertOwnedCompany` — never
+// this field. See `docs/FRONTEND_BREAKING_CHANGES.md` §Phase 19.
+export enum UserPendingRoleEnum {
+    STUDENT = 'student',
+    COMPANY = 'company',
+}
 export type otp = {
     otp: string;
     expiresAt: Date;
@@ -119,6 +135,10 @@ export interface IUser {
     email: string;
     password?: string;
     role: UserRoleEnum;
+    // Phase 19 / Signup intent (see UserPendingRoleEnum above).
+    // Optional — defaults to "student" for legacy signups. Frontend
+    // reads it to pick the onboarding flow. Not security-relevant.
+    pendingRole?: UserPendingRoleEnum;
     newEmail?: string;
     emailOtp: otp;
     passwordOtp: otp;
