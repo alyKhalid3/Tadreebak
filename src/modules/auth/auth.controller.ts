@@ -88,6 +88,21 @@ const authService = new AuthService()
  *                     endDate:
  *                       type: string
  *                       format: date
+ *               pendingRole:
+ *                 type: string
+ *                 enum: [student, company]
+ *                 default: student
+ *                 description: |
+ *                   Phase 19 / Signup intent. The "I came here as a
+ *                   student / I came here as a company" pick from
+ *                   the signup form. Stored on `User.pendingRole`
+ *                   as a UX-only signal so the front-end can route
+ *                   the user to the right onboarding flow after
+ *                   email confirmation. NOT used for access control
+ *                   — `User.role` is the source of truth (still
+ *                   `student` at signup; only flips to
+ *                   `company_owner` when the user actually creates
+ *                   a company).
  *     responses:
  *       200:
  *         description: User created successfully
@@ -104,7 +119,7 @@ const authService = new AuthService()
  *                 msg:
  *                   type: string
  *       400:
- *         description: Email already exists or passwords do not match
+ *         description: Email already exists, passwords do not match, or pendingRole is not a valid value
  *         content:
  *           application/json:
  *             schema:

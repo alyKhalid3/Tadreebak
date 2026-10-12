@@ -50,7 +50,20 @@ const options = {
             lastName: { type: 'string', example: 'Doe' },
             email: { type: 'string', format: 'email', example: 'john@example.com' },
             phoneNumber: { type: 'string', example: '+1234567890' },
-            role: { type: 'string', enum: ['admin', 'user', 'student', 'company_owner'], example: 'student' },
+            role: { type: 'string', enum: ['admin', 'user', 'student', 'company_owner', 'company_instructor', 'intern'], example: 'student' },
+            // Phase 19 / Signup intent. The "I came here as a student
+            // / I came here as a company" pick from the signup form.
+            // Frontend reads this to pick the right onboarding
+            // flow. NO permission semantics — `User.role` is the
+            // source of truth for access control. Always "student"
+            // by default; only set to "company" when the user
+            // explicitly chose that at signup.
+            pendingRole: {
+                type: 'string',
+                enum: ['student', 'company'],
+                description: 'Phase 19 / Signup intent. UX-only signal — not used for access control.',
+                example: 'company',
+            },
             isConfirmed: { type: 'boolean', example: false },
             provider: { type: 'string', enum: ['system', 'google', 'facebook'], example: 'system' },
             bio: { type: 'string', example: 'Passionate software developer' },
@@ -256,6 +269,19 @@ const options = {
             companyEmail: { type: 'string', format: 'email', example: 'info@techcorp.com' },
             createdBy: { type: 'string', example: '60d0fe4f5311236168a109ca' },
             approvedByAdmin: { type: 'boolean', example: false },
+            // Phase 19 / Owner-set "I'm done editing, please review"
+            // signal. Defaults to false. The admin queue
+            // (`GET /company/admin/pending`) only shows companies
+            // where `isCompleted=true AND approvedByAdmin=false`,
+            // and the admin `approve` endpoint refuses with 400
+            // unless `isCompleted=true`. New companies created via
+            // the on-boarding form default to `true` (the form's
+            // "Submit for review" button is the create endpoint).
+            isCompleted: {
+                type: 'boolean',
+                description: 'Phase 19 / Owner-set "ready for review" signal. Required to be true before the admin can approve.',
+                example: true,
+            },
             bannedAt: { type: 'string', format: 'date-time', nullable: true },
             deletedAt: { type: 'string', format: 'date-time', nullable: true },
             // Phase 10 / P2 #D — public profile enrichment fields.

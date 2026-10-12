@@ -115,6 +115,12 @@ router.get(
  * /company/:
  *   post:
  *     summary: Create a company
+ *     description: |
+ *       The on-boarding "Submit for review" form posts here. Creating
+ *       a company also promotes the caller to `COMPANY_OWNER`,
+ *       seeds the system roles (Owner + Instructor) for the new
+ *       company, and lands the company in the admin approval queue
+ *       (`isCompleted: true` by default).
  *     tags: [Company]
  *     security:
  *       - bearerAuth: []
@@ -144,9 +150,51 @@ router.get(
  *               legalAttachment:
  *                 type: string
  *                 format: binary
+ *               website:
+ *                 type: string
+ *                 format: uri
+ *                 nullable: true
+ *               linkedin:
+ *                 type: string
+ *                 format: uri
+ *                 nullable: true
+ *               headline:
+ *                 type: string
+ *                 maxLength: 200
+ *                 nullable: true
+ *               foundedYear:
+ *                 type: integer
+ *                 minimum: 1800
+ *                 maximum: 2100
+ *                 nullable: true
+ *               isCompleted:
+ *                 type: boolean
+ *                 default: true
+ *                 description: |
+ *                   Phase 19 / Owner-set "I'm done editing, please
+ *                   review" signal. Defaults to `true` because this
+ *                   endpoint IS the on-boarding "Submit for review"
+ *                   form — clicking submit implies the owner is
+ *                   ready for admin review. Pass `false` to create
+ *                   as a draft (rare; reserved for future flows).
+ *                   The admin queue filters on this, and the admin
+ *                   `approve` endpoint refuses with 400 unless
+ *                   `isCompleted=true`.
  *     responses:
  *       200:
  *         description: Company created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     company:
+ *                       $ref: '#/components/schemas/Company'
+ *                 msg:
+ *                   type: string
  *       400:
  *         description: Company name or email already exists / validation errors
  */

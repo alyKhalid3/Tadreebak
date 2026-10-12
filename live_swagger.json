@@ -96,9 +96,20 @@
               "admin",
               "user",
               "student",
-              "company_owner"
+              "company_owner",
+              "company_instructor",
+              "intern"
             ],
             "example": "student"
+          },
+          "pendingRole": {
+            "type": "string",
+            "enum": [
+              "student",
+              "company"
+            ],
+            "description": "Phase 19 / Signup intent. UX-only signal — not used for access control.",
+            "example": "company"
           },
           "isConfirmed": {
             "type": "boolean",
@@ -550,6 +561,11 @@
           "approvedByAdmin": {
             "type": "boolean",
             "example": false
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "description": "Phase 19 / Owner-set \"ready for review\" signal. Required to be true before the admin can approve.",
+            "example": true
           },
           "bannedAt": {
             "type": "string",
@@ -3495,6 +3511,15 @@
                         }
                       }
                     }
+                  },
+                  "pendingRole": {
+                    "type": "string",
+                    "enum": [
+                      "student",
+                      "company"
+                    ],
+                    "default": "student",
+                    "description": "Phase 19 / Signup intent. The \"I came here as a\nstudent / I came here as a company\" pick from\nthe signup form. Stored on `User.pendingRole`\nas a UX-only signal so the front-end can route\nthe user to the right onboarding flow after\nemail confirmation. NOT used for access control\n— `User.role` is the source of truth (still\n`student` at signup; only flips to\n`company_owner` when the user actually creates\na company).\n"
                   }
                 }
               }
@@ -3526,7 +3551,7 @@
             }
           },
           "400": {
-            "description": "Email already exists or passwords do not match",
+            "description": "Email already exists, passwords do not match, or pendingRole is not a valid value",
             "content": {
               "application/json": {
                 "schema": {
@@ -4815,6 +4840,7 @@
       },
       "post": {
         "summary": "Create a company",
+        "description": "The on-boarding \"Submit for review\" form posts here. Creating\na company also promotes the caller to `COMPANY_OWNER`,\nseeds the system roles (Owner + Instructor) for the new\ncompany, and lands the company in the admin approval queue\n(`isCompleted: true` by default).\n",
         "tags": [
           "Company"
         ],
@@ -4856,6 +4882,32 @@
                   "legalAttachment": {
                     "type": "string",
                     "format": "binary"
+                  },
+                  "website": {
+                    "type": "string",
+                    "format": "uri",
+                    "nullable": true
+                  },
+                  "linkedin": {
+                    "type": "string",
+                    "format": "uri",
+                    "nullable": true
+                  },
+                  "headline": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "nullable": true
+                  },
+                  "foundedYear": {
+                    "type": "integer",
+                    "minimum": 1800,
+                    "maximum": 2100,
+                    "nullable": true
+                  },
+                  "isCompleted": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Phase 19 / Owner-set \"I'm done editing, please\nreview\" signal. Defaults to `true` because this\nendpoint IS the on-boarding \"Submit for review\"\nform — clicking submit implies the owner is\nready for admin review. Pass `false` to create\nas a draft (rare; reserved for future flows).\nThe admin queue filters on this, and the admin\n`approve` endpoint refuses with 400 unless\n`isCompleted=true`.\n"
                   }
                 }
               }
@@ -4864,7 +4916,27 @@
         },
         "responses": {
           "200": {
-            "description": "Company created successfully"
+            "description": "Company created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "company": {
+                          "$ref": "#/components/schemas/Company"
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "description": "Company name or email already exists / validation errors"
@@ -4997,6 +5069,77 @@
           },
           "404": {
             "description": "Company not found"
+          }
+        }
+      }
+    },
+    "/company/{companyId}/complete-profile": {
+      "patch": {
+        "summary": "Submit (or un-submit) the company profile for admin review (owner only)",
+        "description": "Phase 19. Toggles the `isCompleted` field on the company.\nSetting it to `true` is the owner's \"I'm done editing, please\nreview\" signal — the company then shows up in the admin\napproval queue and the admin can approve it. Setting it to\n`false` pulls the company back out of the admin queue (only\nallowed when the company is not yet approved).\n\nOnce `approvedByAdmin=true` the field is frozen — the\nendpoint refuses with 400 from that point on.\n",
+        "tags": [
+          "Company"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "companyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "isCompleted"
+                ],
+                "properties": {
+                  "isCompleted": {
+                    "type": "boolean",
+                    "description": "true to submit, false to un-submit"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile completion status updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "company": {
+                          "$ref": "#/components/schemas/Company"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body / company already approved"
+          },
+          "404": {
+            "description": "Company not found / not owned by this user"
           }
         }
       }
@@ -11177,6 +11320,141 @@
           },
           "404": {
             "description": "Invite not found"
+          }
+        }
+      }
+    },
+    "/me/permissions": {
+      "get": {
+        "summary": "Get the current user's role + permissions across every company they're associated with",
+        "description": "One-call answer to \"what can I do?\". Returns:\n  - The user's global role (e.g. `company_instructor`).\n  - For each company the user is associated with (via\n    `staffMembership[]` active, or via `Company.createdBy`\n    for owners), the company name, their role at that\n    company, and the effective `effectivePermissions`\n    array.\n\nOwner case: a user where `Company.createdBy === user._id`\nis the company owner and gets every permission implicitly.\nWe expand that to `effectivePermissions: all 26 keys` so\nthe front-end doesn't have to special-case the owner.\n\nActive-only: soft-revoked staff and removed memberships\ndon't surface here. Removed staff see the company in\n`User.staffMembership[]` (audit trail) but not in this\nendpoint.\n\nCaching: live DB read. Per-user, low-traffic. A stale\n\"you're staff\" state on a just-revoked user would let\nthem keep acting for the 30s window — not worth the\ncomplexity of a cache here. The two queries (User +\nCompany $in) are sub-millisecond.\n",
+        "tags": [
+          "Me"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permissions fetched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "example": "company_instructor"
+                        },
+                        "companies": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "companyId": {
+                                "type": "string"
+                              },
+                              "companyName": {
+                                "type": "string"
+                              },
+                              "companyLogo": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "public_id": {
+                                    "type": "string"
+                                  },
+                                  "secure_url": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "isOwner": {
+                                "type": "boolean"
+                              },
+                              "membership": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "status": {
+                                    "type": "string",
+                                    "example": "active"
+                                  },
+                                  "joinedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "removedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "nullable": true
+                                  }
+                                }
+                              },
+                              "role": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "_id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "example": "HR Lead"
+                                  },
+                                  "description": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "isSystem": {
+                                    "type": "boolean"
+                                  },
+                                  "isOwnerRole": {
+                                    "type": "boolean"
+                                  },
+                                  "permissions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "example": [
+                                      "applicants.read",
+                                      "applicants.review",
+                                      "interns.read"
+                                    ]
+                                  }
+                                }
+                              },
+                              "effectivePermissions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "The full list of permission keys the\nuser can act on at this company.\nFor owners, this is every key in\nthe registry. For staff, this is\nthe role's permission array.\n"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
           }
         }
       }
