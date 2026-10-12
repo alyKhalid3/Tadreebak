@@ -42,7 +42,23 @@ export class CompanyService {
                 folder: `/users/${user.firstName}_${user._id}/companies`,
                 resourceType: "raw",
             });
-            const createdCompany = await this.companyRepo.create({ data: { ...data, createdBy: user._id, legalAttachment: { public_id, secure_url } } })
+            const createdCompany = await this.companyRepo.create({
+                data: {
+                    ...data,
+                    createdBy: user._id,
+                    legalAttachment: { public_id, secure_url },
+                    // Phase 19 / The on-boarding "Submit for review"
+                    // form is the entry point for the create flow —
+                    // clicking it implies the owner is done editing
+                    // and ready for admin review. The Zod schema
+                    // defaults `isCompleted` to `true` on create,
+                    // so this lands the new company directly in the
+                    // admin queue (`isCompleted=true AND
+                    // approvedByAdmin=false`). If a future caller
+                    // wants a "create as draft" flow, they can
+                    // pass `isCompleted: false` in the body.
+                },
+            })
 
             // Seed the system roles for this company: Owner (full
             // perms) + Instructor (the Phase 18 staff set, expressed
@@ -92,11 +108,17 @@ export class CompanyService {
                 !company ||
                 company.deletedAt ||
                 company.bannedAt ||
-                !company.approvedByAdmin ||
                 company.createdBy.toString() !== user._id.toString()
             ) {
                 throw new NotFoundException("Company not found")
             }
+            // Phase 19 / The previous design required `approvedByAdmin=true`
+            // before the owner could edit their profile — which left a gap
+            // where the owner couldn't fill the enrichment fields
+            // (website / linkedin / headline / foundedYear / timezone) before
+            // submitting for review. The owner can now edit any time they
+            // own the company and it's not banned / soft-deleted, regardless
+            // of approval status.
             const updatedCompany = await this.companyRepo.update({
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
                 data: {
@@ -113,6 +135,85 @@ export class CompanyService {
             ])
 
             return successHandler({ res, message: "Company updated successfully", data: { company: updatedCompany } })
+        } catch (error) {
+            next(error)
+        }
+    }
+
+    // ---- Phase 19 / Owner: submit (or un-submit) the profile for review ----
+    //
+    // `isCompleted=true` is the owner's signal that the profile is
+    // done and ready for admin approval. The admin queue
+    // (`GET /company/admin/pending`) only shows rows where
+    // `isCompleted=true AND approvedByAdmin=false`, and the admin
+    // `approve` endpoint refuses with 400 if `isCompleted` is still
+    // false.
+    //
+    // Body: `{ isCompleted: boolean }` — accepting an explicit
+    // boolean (not a one-way "submit" only) so the owner can also
+    // un-submit if they realized they need to fix something.
+    //
+    // Locked once approved: if `approvedByAdmin=true`, the field is
+    // frozen — we refuse with 400 regardless of body value. From
+    // that point on the admin owns the company's "live" state.
+    submitProfileForReview = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { companyId } = req.params
+            const { isCompleted } = req.body as { isCompleted: boolean }
+            const user = res.locals.user
+            if (!isObjectIdOrHexString(companyId)) {
+                throw new ApplicationError("Invalid company id", 400)
+            }
+            const company = await this.companyRepo.findOne({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+            })
+            if (
+                !company ||
+                company.deletedAt ||
+                company.bannedAt ||
+                company.createdBy.toString() !== user._id.toString()
+            ) {
+                throw new NotFoundException("Company not found")
+            }
+            if (company.approvedByAdmin) {
+                throw new ApplicationError(
+                    "Company is already approved — the profile-completion state is frozen",
+                    400,
+                )
+            }
+            // No-op fast path: same value. Avoids a cache flush if the
+            // user double-clicks the button.
+            if ((company as any).isCompleted === isCompleted) {
+                return successHandler({
+                    res,
+                    message: isCompleted
+                        ? "Profile already marked as complete"
+                        : "Profile already marked as incomplete",
+                    data: { company },
+                })
+            }
+            const updatedCompany = await this.companyRepo.update({
+                filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },
+                data: { isCompleted },
+                options: { returnDocument: "after" },
+            })
+
+            // The detail doc reflects the submission state (it's read
+            // by the owner dashboard), so flush it. Public listing
+            // filters on `approvedByAdmin`, which hasn't changed, so
+            // no `companies:list` flush needed.
+            await Promise.all([
+                cacheDel(`companies:detail:${companyId}`),
+                cacheDel(`companies:byName:${(updatedCompany as any)?.name ?? company.name}`),
+            ])
+
+            return successHandler({
+                res,
+                message: isCompleted
+                    ? "Profile submitted for review — admin will approve shortly"
+                    : "Profile marked as incomplete — you can keep editing",
+                data: { company: updatedCompany },
+            })
         } catch (error) {
             next(error)
         }
@@ -430,7 +531,17 @@ const company = await cacheWrap(
         try {
             const { page = "1", limit = "10" } = req.query as Record<string, string | undefined>
 
-            const filter: Record<string, any> = { approvedByAdmin: false, deletedAt: null, bannedAt: null }
+            const filter: Record<string, any> = {
+                // Phase 19 / The owner has to flip `isCompleted=true`
+                // ("Submit for review") before the admin sees the row
+                // here. This keeps half-finished profiles out of the
+                // approval queue. The approve endpoint also gates on
+                // this — see `approveCompanyAdmin` below.
+                isCompleted: true,
+                approvedByAdmin: false,
+                deletedAt: null,
+                bannedAt: null,
+            }
 
             const pageNum = Math.max(1, parseInt(page || "1", 10))
             const limitNum = Math.min(50, Math.max(1, parseInt(limit || "10", 10)))
@@ -575,6 +686,19 @@ const company = await cacheWrap(
             }
             if (company.approvedByAdmin) {
                 throw new ApplicationError("Company is already approved", 400)
+            }
+            // Phase 19 / The owner has to submit the profile for review
+            // (isCompleted=true) before the admin can approve. This
+            // keeps the admin from rubber-stamping half-finished
+            // profiles that the owner hasn't explicitly said are
+            // ready. If the owner wants to undo, they hit
+            // `PATCH /company/:companyId/complete-profile` with
+            // { isCompleted: false } first.
+            if (!(company as any).isCompleted) {
+                throw new ApplicationError(
+                    "Company profile is not marked as complete yet — the owner must submit it for review first",
+                    400,
+                )
             }
             await this.companyRepo.update({
                 filter: { _id: mongoose.Types.ObjectId.createFromHexString(companyId as string) },

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCompany, updateCompany } from "./company.validation";
+import { completeProfileSchema, createCompany, updateCompany } from "./company.validation";
 
 // Phase 10 / P2 #D — focused tests for the four new enrichment
 // fields. The legacy field tests (name / description / email /
@@ -155,5 +155,90 @@ test("createCompany rejects invalid foundedYear", () => {
             },
             foundedYear: 9999,
         }),
+    )
+})
+
+// ---------------------------------------------------------------------------
+// Phase 19 / completeProfileSchema — owner "submit for review" toggle.
+// Owner uses PATCH /company/:companyId/complete-profile with
+// { isCompleted: boolean } to signal "I'm done editing, please review".
+// Body must contain isCompleted explicitly (true or false). Anything
+// else is a 400 at the validation layer.
+// ---------------------------------------------------------------------------
+
+test("completeProfileSchema accepts isCompleted=true (submit for review)", () => {
+    const parsed = completeProfileSchema.parse({ isCompleted: true })
+    assert.equal(parsed.isCompleted, true)
+})
+
+test("completeProfileSchema accepts isCompleted=false (un-submit)", () => {
+    const parsed = completeProfileSchema.parse({ isCompleted: false })
+    assert.equal(parsed.isCompleted, false)
+})
+
+test("completeProfileSchema rejects a missing isCompleted key", () => {
+    assert.throws(() => completeProfileSchema.parse({}), /isCompleted/i)
+})
+
+test("completeProfileSchema rejects a non-boolean isCompleted", () => {
+    assert.throws(() => completeProfileSchema.parse({ isCompleted: "yes" }), /isCompleted/i)
+    assert.throws(() => completeProfileSchema.parse({ isCompleted: 1 }), /isCompleted/i)
+    assert.throws(() => completeProfileSchema.parse({ isCompleted: null }), /isCompleted/i)
+})
+
+test("completeProfileSchema rejects extra unknown keys (strict object)", () => {
+    // z.object is "strip" by default — extra keys are dropped, not
+    // rejected. The point of this test is to lock in that behaviour
+    // so the wire shape stays clean (no surprise extra fields).
+    const parsed = completeProfileSchema.parse({ isCompleted: true, foo: 'bar' })
+    assert.deepEqual(parsed, { isCompleted: true })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 19 / createCompany.isCompleted default
+//
+// The on-boarding "Submit for review" form is the entry point for the
+// create flow — clicking it implies the owner is done editing. The
+// Zod schema must default isCompleted to true on create so the new
+// company lands directly in the admin queue. Future "create as draft"
+// callers can pass isCompleted: false explicitly.
+// ---------------------------------------------------------------------------
+
+const minimalCreate = {
+    name: 'TechFlow',
+    description: 'We build stuff.',
+    industry: 'Software',
+    address: 'Cairo, EG',
+    numberOfEmployees: '50',
+    companyEmail: 'hi@techflow.io',
+    legalAttachment: {
+        fieldname: 'tax.pdf',
+        originalname: 'tax.pdf',
+        mimetype: 'application/pdf',
+        size: 1024,
+    },
+}
+
+test("createCompany defaults isCompleted to true (on-boarding form = submit for review)", () => {
+    const parsed = createCompany.parse({ ...minimalCreate })
+    assert.equal(parsed.isCompleted, true)
+})
+
+test("createCompany accepts isCompleted: false (future create-as-draft flow)", () => {
+    const parsed = createCompany.parse({ ...minimalCreate, isCompleted: false })
+    assert.equal(parsed.isCompleted, false)
+})
+
+test("createCompany accepts isCompleted: true explicitly", () => {
+    const parsed = createCompany.parse({ ...minimalCreate, isCompleted: true })
+    assert.equal(parsed.isCompleted, true)
+})
+
+test("createCompany rejects a non-boolean isCompleted", () => {
+    assert.throws(() =>
+        createCompany.parse({ ...minimalCreate, isCompleted: "yes" }),
+    )
+    assert.throws(() =>
+        createCompany.parse({ ...minimalCreate, isCompleted: 1 }),
     )
 })

@@ -41,6 +41,18 @@ export const createCompany = z.object({
     linkedin: z.string().url().optional(),
     headline: z.string().max(200).optional(),
     foundedYear: z.coerce.number().int().min(1800).max(2100).optional(),
+    // Phase 19 / Profile-completion flag. Defaults to `true`
+    // because the on-boarding form is the "Submit for review"
+    // button — when the user clicks it, they're simultaneously
+    // creating the company AND declaring it ready for admin
+    // review. The admin queue filter (`isCompleted=true AND
+    // approvedByAdmin=false`) picks it up automatically; the
+    // admin can then flip `approvedByAdmin=true`.
+    //
+    // Optional in the body so a future "create as draft" flow
+    // (rare) can pass `isCompleted: false` explicitly. Anything
+    // else (e.g. `null`, missing) falls back to the default.
+    isCompleted: z.boolean().optional().default(true),
 })
 
 export const updateCompany = z.object({
@@ -71,4 +83,21 @@ export const listCompanyQuerySchema = z.object({
 export const listPendingCompaniesQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
+})
+
+// Phase 19 / Company profile-completion toggle.
+//
+// The company owner uses this to signal "I've finished editing the
+// profile, please review it" (sets `isCompleted=true`). The admin
+// queue filters on this flag, and the admin `approve` endpoint
+// refuses with 400 unless `isCompleted=true`.
+//
+// Body accepts an explicit `isCompleted: boolean` so the endpoint
+// can also be used to undo a mistaken click (set to false). The
+// service refuses to flip `isCompleted=false` once
+// `approvedByAdmin=true` — that's a frozen state from that point on.
+export const completeProfileSchema = z.object({
+    isCompleted: z.boolean({
+        message: "isCompleted must be a boolean (true to submit for review, false to un-submit)",
+    }),
 })

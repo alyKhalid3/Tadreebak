@@ -28,6 +28,16 @@ export interface ICompany {
     deletedAt: Date
     legalAttachment:fileAttributtes
     approvedByAdmin: boolean
+    // Owner-set signal that the company profile is "done" and ready
+    // for admin review. The owner flips it via
+    //   PATCH /company/:companyId/complete-profile  { isCompleted: true }
+    // after editing the enrichment fields (website / linkedin /
+    // headline / foundedYear / timezone). The admin queue
+    // (`GET /company/admin/pending`) only shows companies with
+    // `isCompleted=true AND approvedByAdmin=false`, and the admin
+    // `approve` endpoint refuses with 400 if the profile isn't
+    // complete yet — see CompanyService.approveCompanyAdmin.
+    isCompleted: boolean
     internshipCredits: number
     // `avgRating` is NOT persisted — see utils/avgRating.ts.
     ratingCount: number

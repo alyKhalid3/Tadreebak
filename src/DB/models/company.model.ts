@@ -42,6 +42,12 @@ export const companySchema = new mongoose.Schema<ICompany>({
         }, required: true
     },
     approvedByAdmin: { type: Boolean, default: false },
+    // Owner-set signal that the profile is ready for admin review.
+    // Defaults to false; the owner flips it via
+    //   PATCH /company/:companyId/complete-profile  { isCompleted: true }
+    // after filling the enrichment fields. Admin queue filters on
+    // this and the admin `approve` endpoint gates on it.
+    isCompleted: { type: Boolean, default: false },
     internshipCredits: { type: Number, default: 1, min: 0 },
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 },

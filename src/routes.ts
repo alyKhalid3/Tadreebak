@@ -44,6 +44,10 @@ import { instructorsRouter, instructorAuthRouter } from "./modules/company/instr
 // Phase 18B / Roles + permissions registry endpoints.
 import { rolesRouter } from "./modules/company/roles";
 import { permissionsRouter } from "./modules/permissions";
+// Phase 19 / "My permissions" — single-call answer to
+// "what can I do across my companies?" Mounted at /me so
+// the URL is /me/permissions (one call, not 1+N).
+import { meRouter } from "./modules/me";
 // Side-effect import: registers the subscribers that persist notifications
 // when services publish events. Must run before any request is handled.
 import "./utils/notifications/notificationBus"
@@ -106,6 +110,10 @@ baseRouter.use('/company/:companyId/roles', rolesRouter)
 // Public read-only — exposes the permission registry so the front-end
 // can render a permission picker without hardcoding the keys.
 baseRouter.use('/permissions', permissionsRouter)
+// Phase 19 / "My permissions" — one-call answer to "what can I
+// do?". Mounted at /me so the URL is /me/permissions. Any
+// logged-in user can call it; the response is per-user.
+baseRouter.use('/me', meRouter)
 // Public-internal claim-account flow for instructors — no auth, the
 // body carries the raw setup token from the invite email.
 baseRouter.use('/instructor-auth', instructorAuthRouter)

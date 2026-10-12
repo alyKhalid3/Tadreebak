@@ -20,6 +20,8 @@ export const companyRoutes = {
     getCompanyByName: '/name/:name',
     uploadLogo: '/:companyId/logo',
     uploadCover: '/:companyId/coverPicture',
+    // Phase 19 / Owner "submit profile for review" toggle.
+    completeProfile: '/:companyId/complete-profile',
     adminPending: '/admin/pending',
     adminBan: '/admin/:companyId/ban',
     adminUnban: '/admin/:companyId/unban',
@@ -255,6 +257,66 @@ router.patch(
     auth(),
     validation(CompanyValidation.updateCompany),
     companyService.updateCompany
+)
+
+/**
+ * @swagger
+ * /company/{companyId}/complete-profile:
+ *   patch:
+ *     summary: Submit (or un-submit) the company profile for admin review (owner only)
+ *     description: |
+ *       Phase 19. Toggles the `isCompleted` field on the company.
+ *       Setting it to `true` is the owner's "I'm done editing, please
+ *       review" signal — the company then shows up in the admin
+ *       approval queue and the admin can approve it. Setting it to
+ *       `false` pulls the company back out of the admin queue (only
+ *       allowed when the company is not yet approved).
+ *
+ *       Once `approvedByAdmin=true` the field is frozen — the
+ *       endpoint refuses with 400 from that point on.
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [isCompleted]
+ *             properties:
+ *               isCompleted:
+ *                 type: boolean
+ *                 description: true to submit, false to un-submit
+ *     responses:
+ *       200:
+ *         description: Profile completion status updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     company:
+ *                       $ref: '#/components/schemas/Company'
+ *       400:
+ *         description: Invalid body / company already approved
+ *       404:
+ *         description: Company not found / not owned by this user
+ */
+router.patch(
+    companyRoutes.completeProfile,
+    auth(),
+    validation(CompanyValidation.completeProfileSchema),
+    companyService.submitProfileForReview
 )
 
 /**
