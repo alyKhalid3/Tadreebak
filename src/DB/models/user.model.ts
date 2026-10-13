@@ -38,7 +38,22 @@ const userSchema = new mongoose.Schema<IUser>({
         expiresAt: { type: Date },
         attempts: { type: Number, default: 0 },
     },
-    // sparse so Google/OAuth users (no phone) don't collide on a null value
+    // Phase 19 / Index strategy:
+    //   - `unique: true` — phone numbers are PII and should be unique per user.
+    //   - `sparse: true` — only documents that have a phoneNumber value
+    //     are indexed, so multiple Google/OAuth users (no phoneNumber
+    //     field at all) don't collide.
+    //
+    // Caveat: sparse skips MISSING fields but NOT explicit `null` /
+    // empty-string values. A previous user who signed up with
+    // `phone: ""` or where Mongoose coerced to null was still being
+    // indexed, which produced E11000 on every new signup. The
+    // shipped migration `src/scripts/fix-user-phone-index.ts` runs
+    // once per environment to:
+    //   1. drop the old non-sparse index,
+    //   2. `$unset` every null / empty-string phoneNumber,
+    //   3. recreate the index as unique + sparse.
+    // Run it if you see E11000 on `phoneNumber_1` / `newEmail_1`.
     phoneNumber: { type: String, unique: true, sparse: true },
     isConfirmed: { type: Boolean, default: false },
     isChangeCredentialsUpdated: { type: Date },

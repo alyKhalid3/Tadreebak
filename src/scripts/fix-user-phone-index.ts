@@ -11,11 +11,14 @@
 //   1. Reads the live index definition.
 //   2. Missing index            -> creates it as unique + sparse.
 //   3. Already unique + sparse  -> leaves it alone.
-//   4. Stale (not sparse)       -> drops it, unsets any EXPLICIT null values
-//      (sparse skips missing fields but would still index literal nulls),
-//      then recreates it as unique + sparse.
+//   4. Stale (not sparse)       -> drops it, unsets any EXPLICIT null OR
+//      empty-string values (sparse skips missing fields but would still
+//      index literal nulls AND empty strings), then recreates it as
+//      unique + sparse.
 //
 // Usage:
+//   npx tsx src/scripts/fix-user-phone-index.ts                  (default: live mode)
+//   npx tsx src/scripts/fix-user-phone-index.ts --dry-run        (preview only, no writes)
 //   npx tsx src/scripts/fix-user-phone-index.ts --uri "mongodb+srv://..."
 //   (falls back to MONGO_URI from src/config/.env when --uri is omitted)
 //
@@ -27,8 +30,13 @@ import path from "path";
 
 dotenv.config({ path: path.resolve("./src/config/.env") });
 
-const argIndex = process.argv.indexOf("--uri");
-const uri = argIndex !== -1 ? process.argv[argIndex + 1] : process.env.MONGO_URI;
+const argv = process.argv.slice(2);
+const argIndex = (flag: string) => {
+    const i = argv.indexOf(flag);
+    return i !== -1 ? argv[i + 1] : undefined;
+};
+const uri = argIndex("--uri") ?? process.env.MONGO_URI;
+const dryRun = argv.includes("--dry-run");
 
 if (!uri || !uri.trim()) {
     console.error("No MongoDB URI provided. Pass --uri \"mongodb+srv://...\" or set MONGO_URI.");
@@ -36,6 +44,18 @@ if (!uri || !uri.trim()) {
 }
 
 type IndexInfo = { name: string; unique?: boolean; sparse?: boolean };
+
+// Match every "bad" value for the field: explicit `null`, explicit
+// empty string, AND a field whose value is missing but is set to
+// `null` (e.g. a previous user who hit the bug and got `phone: null`
+// persisted). All three should be `$unset` so the rebuilt sparse
+// index stays clean.
+const dirtyValues = (field: string) => ({
+    $or: [
+        { [field]: null },
+        { [field]: "" },
+    ],
+});
 
 const ensureSparseUnique = async (
     collection: Collection<Document>,
@@ -46,9 +66,11 @@ const ensureSparseUnique = async (
     const existing = indexes.find((i) => i.name === indexName);
 
     if (!existing) {
-        console.log(`[${field}] index ${indexName} missing — creating unique+sparse`);
-        await collection.createIndex({ [field]: 1 }, { unique: true, sparse: true });
-        console.log(`[${field}] created`);
+        console.log(`[${field}] index ${indexName} missing — ${dryRun ? "would create" : "creating"} unique+sparse`);
+        if (!dryRun) {
+            await collection.createIndex({ [field]: 1 }, { unique: true, sparse: true });
+            console.log(`[${field}] created`);
+        }
         return;
     }
 
@@ -58,25 +80,37 @@ const ensureSparseUnique = async (
     }
 
     console.log(
-        `[${field}] ${indexName} is STALE (unique=${!!existing.unique}, sparse=${!!existing.sparse}) — rebuilding`,
+        `[${field}] ${indexName} is STALE (unique=${!!existing.unique}, sparse=${!!existing.sparse}) — ${dryRun ? "would rebuild" : "rebuilding"}`,
     );
-    await collection.dropIndex(indexName);
 
-    // Explicit `null` values are still indexed by a sparse index (only truly
-    // missing fields are skipped). Unset them so the rebuilt index stays clean.
-    const cleaned = await collection.updateMany(
-        { [field]: { $type: "null" } },
-        { $unset: { [field]: "" } },
-    );
-    if (cleaned.modifiedCount > 0) {
-        console.log(`[${field}] unset explicit null on ${cleaned.modifiedCount} document(s)`);
+    // 1. Count the dirty rows first (always, even in --dry-run) so
+    //    the operator sees the impact before committing.
+    const dirtyCount = await collection.countDocuments(dirtyValues(field));
+
+    if (dirtyCount > 0) {
+        console.log(`[${field}] ${dirtyCount} document(s) have null/empty ${field}`);
+        if (!dryRun) {
+            const cleaned = await collection.updateMany(
+                dirtyValues(field),
+                { $unset: { [field]: "" } },
+            );
+            console.log(`[${field}] unset ${cleaned.modifiedCount} document(s)`);
+        }
+    } else {
+        console.log(`[${field}] no null/empty ${field} values to clean`);
     }
 
-    await collection.createIndex({ [field]: 1 }, { unique: true, sparse: true });
-    console.log(`[${field}] rebuilt as unique+sparse`);
+    if (!dryRun) {
+        await collection.dropIndex(indexName);
+        await collection.createIndex({ [field]: 1 }, { unique: true, sparse: true });
+        console.log(`[${field}] rebuilt as unique+sparse`);
+    }
 };
 
 const run = async (): Promise<void> => {
+    if (dryRun) {
+        console.log("=== DRY RUN — no writes will be made ===");
+    }
     console.log("Connecting…");
     const connection = await mongoose.connect(uri as string, {
         serverSelectionTimeoutMS: 10_000,
@@ -85,7 +119,11 @@ const run = async (): Promise<void> => {
         const users = connection.connection.db!.collection("users");
         await ensureSparseUnique(users, "phoneNumber");
         await ensureSparseUnique(users, "newEmail");
-        console.log("Done.");
+        if (dryRun) {
+            console.log("=== DRY RUN complete — re-run without --dry-run to apply ===");
+        } else {
+            console.log("Done.");
+        }
     } finally {
         await mongoose.disconnect();
     }
