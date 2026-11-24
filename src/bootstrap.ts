@@ -79,9 +79,46 @@ export const bootstrap = async () => {
     // keeping a single source of truth so a typo can't drift the two apart.
     const allowedOrigins = new Set<string>([
         'https://tadrebk.vercel.app',
+        // Production custom domain (www + apex — users type both).
+        'https://www.tadrebk.com',
+        'https://tadrebk.com',
         'http://localhost:5173',
         'http://localhost:3000',
     ]);
+
+    // Phase 19 / Extra origins without a code change + redeploy.
+    // `CORS_EXTRA_ORIGINS` is a comma-separated list of exact origins:
+    //   CORS_EXTRA_ORIGINS="https://staging.tadrebk.com,https://preview.vercel.app"
+    // Exact-match only — no wildcards. Reflecting an arbitrary origin with
+    // `Access-Control-Allow-Credentials: true` is a credentialed-CORS bypass,
+    // so we never accept `*` or `*.example.com` patterns here. An entry that
+    // isn't an absolute http(s) origin is ignored (logged, not fatal).
+    //
+    // `FRONTEND_URL` is also folded in — it's already the source of truth for
+    // where the frontend lives (used to build the instructor invite / confirm
+    // / revoke links in emails), so it should be the source of truth for the
+    // CORS whitelist too. Set it once in prod and both follow.
+    const extraOrigins = [
+        ...(process.env.CORS_EXTRA_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+        ...(process.env.FRONTEND_URL ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+    ]
+    for (const origin of extraOrigins) {
+        try {
+            const parsed = new URL(origin)
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                console.warn(`[cors] ignoring non-http(s) origin entry: ${origin}`)
+                continue
+            }
+            // Normalize to the exact `scheme://host[:port]` form the browser
+            // sends in the `Origin` header (no trailing slash, no path).
+            allowedOrigins.add(parsed.origin)
+        } catch {
+            console.warn(`[cors] ignoring malformed origin entry: ${origin}`)
+        }
+    }
+    if (extraOrigins.length > 0) {
+        console.log(`[cors] allowed origins: ${Array.from(allowedOrigins).join(', ')}`)
+    }
 
     // Handle preflight OPTIONS before anything else — including Helmet —
     // so the browser never sees a CORS error on non-simple requests. We must
