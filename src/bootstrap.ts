@@ -80,8 +80,8 @@ export const bootstrap = async () => {
     const allowedOrigins = new Set<string>([
         'https://tadrebk.vercel.app',
         // Production custom domain (www + apex — users type both).
-        'https://www.tadrebk.com',
-        'https://tadrebk.com',
+        'https://www.tadribk.com',
+        'https://tadribk.com',
         'http://localhost:5173',
         'http://localhost:3000',
     ]);
